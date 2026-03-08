@@ -533,22 +533,19 @@ app.post('/api/sync', async (req, res) => {
     }
 });
 
-// Check sync status
+// Check sync status (compatível com Railway)
 app.get('/api/sync/status', async (req, res) => {
-    let gmailConfigured = false;
+    // Usa cleanEnv para garantir compatibilidade com aspas
+    const clientId = cleanEnv(process.env.GOOGLE_CLIENT_ID);
+    const clientSecret = cleanEnv(process.env.GOOGLE_CLIENT_SECRET);
+    const refreshToken = cleanEnv(process.env.GOOGLE_REFRESH_TOKEN);
+    const gmailConfigured = !!(clientId && clientSecret && refreshToken);
     let lastSync = null;
-
-    try {
-        await fs.access(path.join(__dirname, 'gmail-token.json'));
-        gmailConfigured = true;
-    } catch {}
-
     try {
         const state = JSON.parse(await fs.readFile(
             path.join(__dirname, 'data', '.gmail-sync-state.json'), 'utf8'
         ));
         lastSync = state.lastSync;
     } catch {}
-
     res.json({ gmailConfigured, lastSync });
 });
