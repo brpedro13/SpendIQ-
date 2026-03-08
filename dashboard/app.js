@@ -309,7 +309,11 @@ async function runAiCategorization() {
         aiResults._transactions = uncategorized;
 
         renderAiResults();
-        setAiStatus(`✅ IA analisou ${aiResults.categorizations?.length || 0} transações!`, 'success');
+        if (aiResults.warning) {
+            setAiStatus(`⚠️ ${aiResults.warning}`, 'warn');
+        } else {
+            setAiStatus(`✅ IA analisou ${aiResults.categorizations?.length || 0} transações!`, 'success');
+        }
 
     } catch (error) {
         console.error('AI categorization error:', error);

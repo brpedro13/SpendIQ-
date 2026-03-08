@@ -90,27 +90,62 @@ async function callAi(prompt, config) {
         return data.content.find(c => c.type === 'text')?.text || '';
     }
 
-    // Groq / OpenAI-compatible
-    const response = await fetch(config.baseUrl, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${config.apiKey}`
-        },
-        body: JSON.stringify({
-            model: config.model,
-            messages: [
-                { role: 'system', content: 'Você é um assistente financeiro brasileiro especializado em categorizar extratos bancários. Responda SOMENTE com JSON válido. Sem markdown, sem backticks, sem texto antes ou depois do JSON.' },
-                { role: 'user', content: prompt }
-            ],
-            temperature: 0.1,
-            max_tokens: 4096
-        })
-    });
+    const groqModelsToTry = [
+        config.model,
+        'llama-3.1-8b-instant',
+        'llama-3.2-3b-preview'
+    ].filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i);
 
-    if (!response.ok) throw new Error(`${config.provider} API ${response.status}: ${await response.text()}`);
-    const data = await response.json();
-    return data.choices?.[0]?.message?.content || '';
+    const callGroqModel = async (model) => {
+        const response = await fetch(config.baseUrl, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${config.apiKey}`
+            },
+            body: JSON.stringify({
+                model,
+                messages: [
+                    { role: 'system', content: 'Você é um assistente financeiro brasileiro especializado em categorizar extratos bancários. Responda SOMENTE com JSON válido. Sem markdown, sem backticks, sem texto antes ou depois do JSON.' },
+                    { role: 'user', content: prompt }
+                ],
+                temperature: 0.1,
+                max_tokens: 4096
+            })
+        });
+
+        const rawText = await response.text();
+        if (!response.ok) {
+            const err = new Error(`${config.provider} API ${response.status}: ${rawText}`);
+            err.status = response.status;
+            err.rawText = rawText;
+            err.modelTried = model;
+            throw err;
+        }
+        return { text: rawText, model };
+    };
+
+    let lastErr = null;
+    for (const model of groqModelsToTry) {
+        try {
+            const { text, model: usedModel } = await callGroqModel(model);
+            if (usedModel !== config.model) {
+                console.log(`↩️  Fallback model used: ${usedModel}`);
+            }
+            const data = JSON.parse(text);
+            return data.choices?.[0]?.message?.content || '';
+        } catch (err) {
+            lastErr = err;
+            const isRateLimit = Number(err.status) === 429 || /rate[_\s-]?limit/i.test(String(err.message));
+            if (!isRateLimit) throw err;
+            console.warn(`⚠️  Rate limit on model ${err.modelTried || model}`);
+            continue;
+        }
+    }
+
+    const retryMatch = String(lastErr?.rawText || lastErr?.message || '').match(/Please try again in\s*([^".,}]+)/i);
+    const retryHint = retryMatch ? ` Tente novamente em ${retryMatch[1]}.` : '';
+    throw new Error(`Limite diário da IA atingido no Groq.${retryHint} A categorização automática parcial será usada.`);
 }
 
 // ============================================================
@@ -324,6 +359,7 @@ app.post('/api/ai/categorize', async (req, res) => {
         const allIgnores = [];
         const ruleKeywords = new Set();
         const ignoreKeywords = new Set();
+        let rateLimitWarning = null;
 
         for (let b = 0; b < batches.length; b++) {
             const batch = batches[b];
@@ -334,22 +370,32 @@ app.post('/api/ai/categorize', async (req, res) => {
             const prompt = buildPrompt(transactionList, existingCategories, existingFor, ignorePatterns);
             console.log(`  📦 Lote ${b + 1}/${batches.length} (${batch.length} transações)...`);
 
-            const responseText = await callAi(prompt, config);
-            const cleanJson = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
-
             try {
-                const batchResult = JSON.parse(cleanJson);
-                for (const cat of (batchResult.categorizations || [])) allCategorizations.push(cat);
-                for (const rule of (batchResult.suggested_rules || [])) {
-                    const k = rule.keyword.toLowerCase();
-                    if (!ruleKeywords.has(k)) { ruleKeywords.add(k); allRules.push(rule); }
+                const responseText = await callAi(prompt, config);
+                const cleanJson = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
+
+                try {
+                    const batchResult = JSON.parse(cleanJson);
+                    for (const cat of (batchResult.categorizations || [])) allCategorizations.push(cat);
+                    for (const rule of (batchResult.suggested_rules || [])) {
+                        const k = rule.keyword.toLowerCase();
+                        if (!ruleKeywords.has(k)) { ruleKeywords.add(k); allRules.push(rule); }
+                    }
+                    for (const ig of (batchResult.suggested_ignores || [])) {
+                        const k = ig.keyword.toLowerCase();
+                        if (!ignoreKeywords.has(k)) { ignoreKeywords.add(k); allIgnores.push(ig); }
+                    }
+                } catch (parseErr) {
+                    console.error(`  ❌ Erro lote ${b + 1}:`, parseErr.message);
                 }
-                for (const ig of (batchResult.suggested_ignores || [])) {
-                    const k = ig.keyword.toLowerCase();
-                    if (!ignoreKeywords.has(k)) { ignoreKeywords.add(k); allIgnores.push(ig); }
+            } catch (batchErr) {
+                const isRateLimit = /limite diário|rate[_\s-]?limit|429/i.test(String(batchErr.message || ''));
+                if (isRateLimit) {
+                    rateLimitWarning = batchErr.message;
+                    console.warn(`⚠️  IA limitada no lote ${b + 1}. Continuando com fallback local.`);
+                    break;
                 }
-            } catch (parseErr) {
-                console.error(`  ❌ Erro lote ${b + 1}:`, parseErr.message);
+                throw batchErr;
             }
 
             if (b < batches.length - 1) await new Promise(r => setTimeout(r, 500));
@@ -375,7 +421,12 @@ app.post('/api/ai/categorize', async (req, res) => {
             };
         });
 
-        const result = { categorizations: expandedCategorizations, suggested_rules: allRules, suggested_ignores: allIgnores };
+        const result = {
+            categorizations: expandedCategorizations,
+            suggested_rules: allRules,
+            suggested_ignores: allIgnores,
+            warning: rateLimitWarning
+        };
         console.log(`✅ ${expandedCategorizations.length} categorizadas | 📝 ${allRules.length} regras | 🚫 ${allIgnores.length} ignores`);
         res.json(result);
 
