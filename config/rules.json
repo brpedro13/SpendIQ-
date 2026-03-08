@@ -1,6 +1,6 @@
 {
   "99food": {
-    "category": "delivery",
+    "category": "alimentação",
     "for": "ambos"
   },
   "ifd": {
@@ -8,7 +8,7 @@
     "for": "ambos"
   },
   "ifood": {
-    "category": "delivery",
+    "category": "alimentação",
     "for": "ambos"
   },
   "99 - nupay": {
@@ -165,6 +165,22 @@
   },
   "armazem": {
     "category": "alimentação",
+    "for": "ambos"
+  },
+  "uber - nupay": {
+    "category": "transporte",
+    "for": "ambos"
+  },
+  "99food - nupay": {
+    "category": "alimentação",
+    "for": "ambos"
+  },
+  "ebw*spotify": {
+    "category": "assinatura",
+    "for": "ambos"
+  },
+  "drogaria venancio": {
+    "category": "farmácia",
     "for": "ambos"
   }
 }

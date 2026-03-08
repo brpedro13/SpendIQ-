@@ -336,6 +336,41 @@ function inferFallbackCategorization(transaction) {
     };
 }
 
+const BLOCKED_GENERIC_RULE_KEYWORDS = new Set([
+    'nu pay',
+    'nupay',
+    'nome loja',
+    'nome pessoa'
+]);
+
+const SAFE_BASELINE_RULES = {
+    '99 - nupay': { category: 'transporte', for: 'ambos' },
+    'nupay - 99': { category: 'transporte', for: 'ambos' },
+    'uber - nupay': { category: 'transporte', for: 'ambos' },
+    '99food - nupay': { category: 'alimentação', for: 'ambos' },
+    '99food': { category: 'alimentação', for: 'ambos' },
+    'ifood': { category: 'alimentação', for: 'ambos' },
+    'spotify': { category: 'assinatura', for: 'ambos' },
+    'ebw*spotify': { category: 'assinatura', for: 'ambos' },
+    'drogasmil': { category: 'farmácia', for: 'ambos' },
+    'drogaria venancio': { category: 'farmácia', for: 'ambos' }
+};
+
+function normalizeRuleKeyword(keyword) {
+    return (keyword || '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+function shouldAcceptRuleKeyword(keyword) {
+    if (!keyword || keyword.length < 2) return false;
+    if (BLOCKED_GENERIC_RULE_KEYWORDS.has(keyword)) return false;
+    return true;
+}
+
 // AI auto-categorize (batched)
 app.post('/api/ai/categorize', async (req, res) => {
     try {
@@ -479,14 +514,34 @@ app.post('/api/ai/apply-rules', async (req, res) => {
     try {
         const { rules, ignores } = req.body;
 
+        const rulesPath = path.join(__dirname, 'config', 'rules.json');
+        const currentRules = JSON.parse(await fs.readFile(rulesPath, 'utf8'));
+
+        let acceptedRules = 0;
+        let ignoredRules = 0;
         if (rules && rules.length > 0) {
-            const rulesPath = path.join(__dirname, 'config', 'rules.json');
-            const currentRules = JSON.parse(await fs.readFile(rulesPath, 'utf8'));
             for (const rule of rules) {
-                currentRules[rule.keyword.toLowerCase()] = { category: rule.category, for: rule.for };
+                const normalizedKeyword = normalizeRuleKeyword(rule.keyword);
+                if (!shouldAcceptRuleKeyword(normalizedKeyword)) {
+                    ignoredRules++;
+                    continue;
+                }
+                currentRules[normalizedKeyword] = { category: rule.category, for: rule.for };
+                acceptedRules++;
             }
-            await fs.writeFile(rulesPath, JSON.stringify(currentRules, null, 2));
-            console.log(`✅ +${rules.length} regras no rules.json`);
+        }
+
+        // Always keep baseline deterministic mappings even without premium AI.
+        for (const [keyword, val] of Object.entries(SAFE_BASELINE_RULES)) {
+            currentRules[keyword] = val;
+        }
+
+        await fs.writeFile(rulesPath, JSON.stringify(currentRules, null, 2));
+        if (acceptedRules > 0) {
+            console.log(`✅ +${acceptedRules} regras no rules.json`);
+        }
+        if (ignoredRules > 0) {
+            console.log(`🛡️ Ignoradas ${ignoredRules} regras genéricas inseguras`);
         }
 
         if (ignores && ignores.length > 0) {
@@ -505,7 +560,12 @@ app.post('/api/ai/apply-rules', async (req, res) => {
             console.log(`✅ +${ignores.length} regras no ignore.json`);
         }
 
-        res.json({ success: true, rulesAdded: rules?.length || 0, ignoresAdded: ignores?.length || 0 });
+        res.json({
+            success: true,
+            rulesAdded: acceptedRules,
+            rulesIgnored: ignoredRules,
+            ignoresAdded: ignores?.length || 0
+        });
     } catch (error) {
         console.error('Error applying rules:', error);
         res.status(500).json({ error: 'Failed to apply rules' });

@@ -10,6 +10,55 @@ const DATA_DIR = "./data";
 const OUTPUT_FILE = "./data/merged.json";
 const AUDIT_FILE = "./data/audit_reversals.json";
 
+const BASELINE_RULES = {
+  "99 - nupay": { category: "transporte", for: "ambos" },
+  "nupay - 99": { category: "transporte", for: "ambos" },
+  "uber - nupay": { category: "transporte", for: "ambos" },
+  "99food - nupay": { category: "alimentação", for: "ambos" },
+  "99food": { category: "alimentação", for: "ambos" },
+  "ifood": { category: "alimentação", for: "ambos" },
+  "spotify": { category: "assinatura", for: "ambos" },
+  "ebw*spotify": { category: "assinatura", for: "ambos" },
+  "drogasmil": { category: "farmácia", for: "ambos" },
+  "drogaria venancio": { category: "farmácia", for: "ambos" }
+};
+
+const BLOCKED_GENERIC_KEYWORDS = new Set([
+  "nu pay",
+  "nupay",
+  "nome loja",
+  "nome pessoa"
+]);
+
+const normalizeRuleKeyword = (keyword) =>
+  (keyword || "")
+    .toString()
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+
+const sanitizeRules = (rules) => {
+  const clean = {};
+  for (const [rawKeyword, rawRule] of Object.entries(rules || {})) {
+    const keyword = normalizeRuleKeyword(rawKeyword);
+    if (!keyword || keyword.length < 2) continue;
+    if (BLOCKED_GENERIC_KEYWORDS.has(keyword)) continue;
+    if (!rawRule || typeof rawRule !== "object") continue;
+    clean[keyword] = {
+      category: rawRule.category || "uncategorized",
+      for: rawRule.for || "pedro"
+    };
+  }
+  return clean;
+};
+
+const buildEffectiveRules = (rawRules) => {
+  const sanitized = sanitizeRules(rawRules);
+  // Baseline rules are mandatory and override weaker/generic behavior.
+  return { ...sanitized, ...BASELINE_RULES };
+};
+
 const readCsv = async (path) => {
   try {
     const content = await fs.readFile(path, "utf8");
@@ -44,7 +93,9 @@ const getField = (row, keys) => {
 const applyRules = (description, rules) => {
   if (!description) return { category: "uncategorized", for: "pedro", matched: false };
   const lowerDesc = description.toLowerCase();
-  for (const [keyword, rule] of Object.entries(rules)) {
+  // Longest keyword first so specific rules beat broad ones.
+  const sortedRules = Object.entries(rules).sort((a, b) => b[0].length - a[0].length);
+  for (const [keyword, rule] of sortedRules) {
     if (lowerDesc.includes(keyword.toLowerCase())) return { ...rule, matched: true };
   }
   return { category: "uncategorized", for: "pedro", matched: false };
@@ -534,7 +585,14 @@ const inferPersonFromDescription = (transactions) => {
   try {
     console.log("🔄 Starting parsing...");
 
-    const rules = JSON.parse(await fs.readFile(RULES_PATH, "utf8"));
+    const rawRules = JSON.parse(await fs.readFile(RULES_PATH, "utf8"));
+    const rules = buildEffectiveRules(rawRules);
+    const rawSerialized = JSON.stringify(rawRules || {});
+    const effectiveSerialized = JSON.stringify(rules);
+    if (rawSerialized !== effectiveSerialized) {
+      await fs.writeFile(RULES_PATH, JSON.stringify(rules, null, 2));
+      console.log("🛡️  Rules hardened: removed generic keywords and enforced baseline mappings");
+    }
 
     let ignoreConfig = null;
     try {
