@@ -2,6 +2,7 @@
 // Can be run standalone: node scripts/gmail-sync.js
 // Or called from server.js as auto-sync
 
+
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'url';
@@ -9,8 +10,6 @@ import { google } from 'googleapis';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.join(__dirname, '..');
-const CREDENTIALS_PATH = path.join(ROOT, 'credentials.json');
-const TOKEN_PATH = path.join(ROOT, 'gmail-token.json');
 const DATA_DIR = path.join(ROOT, 'data');
 const SYNC_STATE_PATH = path.join(ROOT, 'data', '.gmail-sync-state.json');
 
@@ -27,36 +26,15 @@ const VALID_EXTENSIONS = ['.csv', '.ofx', '.OFX', '.CSV'];
  * Get authenticated Gmail client
  */
 async function getGmailClient() {
-    let credentials;
-    try {
-        credentials = JSON.parse(await fs.readFile(CREDENTIALS_PATH, 'utf8'));
-    } catch {
-        throw new Error('credentials.json não encontrado. Rode: node scripts/gmail-auth.js');
+    // Use variáveis de ambiente em vez de arquivos locais
+    const client_id = process.env.GOOGLE_CLIENT_ID;
+    const client_secret = process.env.GOOGLE_CLIENT_SECRET;
+    const refresh_token = process.env.GOOGLE_REFRESH_TOKEN;
+    if (!client_id || !client_secret || !refresh_token) {
+        throw new Error('Faltam variáveis de ambiente do Google: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN');
     }
-
-    let token;
-    try {
-        token = JSON.parse(await fs.readFile(TOKEN_PATH, 'utf8'));
-    } catch {
-        throw new Error('gmail-token.json não encontrado. Rode: node scripts/gmail-auth.js');
-    }
-
-    const { client_id, client_secret } = credentials.installed || credentials.web || {};
-    const oauth2Client = new google.auth.OAuth2(
-        client_id, client_secret, 'http://localhost:3333/oauth2callback'
-    );
-    oauth2Client.setCredentials(token);
-
-    // Auto-refresh token
-    oauth2Client.on('tokens', async (tokens) => {
-        if (tokens.refresh_token) {
-            token.refresh_token = tokens.refresh_token;
-        }
-        token.access_token = tokens.access_token;
-        token.expiry_date = tokens.expiry_date;
-        await fs.writeFile(TOKEN_PATH, JSON.stringify(token, null, 2));
-    });
-
+    const oauth2Client = new google.auth.OAuth2(client_id, client_secret);
+    oauth2Client.setCredentials({ refresh_token });
     return google.gmail({ version: 'v1', auth: oauth2Client });
 }
 
