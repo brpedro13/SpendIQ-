@@ -221,7 +221,7 @@ async function runGmailSync() {
 async function forgetAllAiMemory() {
     const btn = document.getElementById('aiForgetAll');
     const confirmed = window.confirm(
-        'Isso vai apagar regras, ignores e overrides salvos, reprocessar os dados e recarregar a tela. Deseja continuar?'
+        'Isso vai apagar regras e overrides salvos, preservar ignores essenciais (fatura/RDB/estorno), reprocessar os dados e recarregar a tela. Deseja continuar?'
     );
     if (!confirmed) return;
 
@@ -236,7 +236,7 @@ async function forgetAllAiMemory() {
         }
 
         localStorage.removeItem('finance_overrides');
-        showToast('🧹 Memória limpa. Recarregando com regra padrão (pedro)...', 'success');
+        showToast('🧹 Memória limpa (com ignores essenciais). Recarregando...', 'success');
         setTimeout(() => location.reload(), 1200);
     } catch (error) {
         showToast(`❌ Erro ao limpar memória: ${error.message}`, 'error');

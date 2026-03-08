@@ -390,10 +390,48 @@ app.post('/api/ai/forget-all', async (req, res) => {
         const ignorePath = path.join(__dirname, 'config', 'ignore.json');
         const overridesPath = path.join(__dirname, 'data', 'overrides.json');
 
+        const essentialIgnoreRules = [
+            {
+                type: 'description_contains',
+                value: 'Pagamento de fatura',
+                reason: 'Pagamento de fatura do cartão (transferência interna)'
+            },
+            {
+                type: 'description_contains',
+                value: 'Pagamento recebido',
+                reason: 'Pagamento da fatura recebido (duplica com débito)'
+            },
+            {
+                type: 'description_contains',
+                value: 'Aplicação RDB',
+                reason: 'Aplicação em investimento Nubank'
+            },
+            {
+                type: 'description_contains',
+                value: 'Resgate RDB',
+                reason: 'Resgate de investimento Nubank'
+            },
+            {
+                type: 'description_contains',
+                value: 'Estorno de compra',
+                reason: 'Estorno - não é gasto real'
+            },
+            {
+                type: 'description_contains',
+                value: 'Valor adicionado na conta por cartão de crédito',
+                reason: 'Movimentação interna - crédito adicionado para Pix'
+            },
+            {
+                type: 'description_contains',
+                value: 'PEDRO BRASIL ALVES LOPES',
+                reason: 'Transferência própria entre contas'
+            }
+        ];
+
         const emptyRules = {};
         const emptyIgnore = {
             description: 'Configuration for ignoring specific transactions',
-            rules: []
+            rules: essentialIgnoreRules
         };
         const emptyOverrides = {
             description: 'Manual overrides',
@@ -409,7 +447,7 @@ app.post('/api/ai/forget-all', async (req, res) => {
 
         res.json({
             success: true,
-            message: 'Memória da IA limpa e dados reprocessados.'
+            message: 'Memória da IA limpa com ignores essenciais preservados e dados reprocessados.'
         });
     } catch (error) {
         console.error('Error forgetting AI memory:', error);
