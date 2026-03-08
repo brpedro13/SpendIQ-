@@ -128,6 +128,15 @@ app.get('/data/merged.json', async (req, res) => {
     } catch { res.json([]); }
 });
 
+app.get('/api/data/merged', async (req, res) => {
+    try {
+        const data = await fs.readFile(path.join(__dirname, 'data', 'merged.json'), 'utf8');
+        res.json(JSON.parse(data));
+    } catch {
+        res.json([]);
+    }
+});
+
 app.post('/api/save-override', async (req, res) => {
     try {
         const { key, field, value } = req.body;
@@ -475,7 +484,7 @@ async function checkGmailSync() {
         console.log('📬 Gmail sync: ✅ configurado');
     } catch {
         console.log('📬 Gmail sync: ❌ não configurado (rode: node scripts/gmail-auth.js)');
-}""
+}
 }
 
 async function runParse() {
@@ -485,6 +494,16 @@ async function runParse() {
     const src = path.join(__dirname, 'data', 'merged.json');
     const dst = path.join(__dirname, 'dashboard', 'data', 'merged.json');
     await fs.copyFile(src, dst);
+}
+
+async function isMergedEmpty() {
+    try {
+        const raw = await fs.readFile(path.join(__dirname, 'data', 'merged.json'), 'utf8');
+        const parsed = JSON.parse(raw);
+        return !Array.isArray(parsed) || parsed.length === 0;
+    } catch {
+        return true;
+    }
 }
 
 async function autoSync() {
@@ -517,7 +536,8 @@ app.post('/api/sync', async (req, res) => {
         const { syncFromGmail } = await import('./scripts/gmail-sync.js');
         const result = await syncFromGmail();
 
-        if (result.newFiles > 0) {
+        const reparsedBecauseEmpty = result.newFiles === 0 && await isMergedEmpty();
+        if (result.newFiles > 0 || reparsedBecauseEmpty) {
             await runParse();
         }
 
@@ -525,7 +545,7 @@ app.post('/api/sync', async (req, res) => {
             success: true,
             newFiles: result.newFiles,
             totalEmails: result.totalEmails,
-            reparsed: result.newFiles > 0
+            reparsed: result.newFiles > 0 || reparsedBecauseEmpty
         });
     } catch (error) {
         console.error('Sync error:', error);

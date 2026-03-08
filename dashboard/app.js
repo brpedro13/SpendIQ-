@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // Load data from merged.json
 async function loadData() {
     try {
-        const response = await fetch('./data/merged.json');
+        const response = await fetch(`/api/data/merged?t=${Date.now()}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         transactions = await response.json();
         applyLocalStorageOverrides();
