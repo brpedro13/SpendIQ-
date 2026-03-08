@@ -8,6 +8,7 @@ const IGNORE_PATH = "./config/ignore.json";
 const OVERRIDES_PATH = "./data/overrides.json";
 const DATA_DIR = "./data";
 const OUTPUT_FILE = "./data/merged.json";
+const AUDIT_FILE = "./data/audit_reversals.json";
 
 const readCsv = async (path) => {
   try {
@@ -224,6 +225,7 @@ const normalizeForDedup = (desc) => {
 // Deduplicate with conservative rules to avoid deleting legitimate repeated
 // charges while still removing known CSV+OFX duplicates.
 const deduplicateTransactions = (transactions) => {
+  const auditEntries = [];
   // 1) Remove exact duplicates only when a stable transaction id exists.
   const seenStrong = new Set();
   const withStrongDedup = transactions.filter(t => {
@@ -256,6 +258,16 @@ const deduplicateTransactions = (transactions) => {
     if (csvItems.length === 0 || ofxItems.length === 0) continue;
     for (const o of ofxItems) {
       toRemove.add(o.index);
+      const removed = withStrongDedup[o.index];
+      if (removed) {
+        auditEntries.push({
+          reason: 'cross_source_duplicate_prefer_csv',
+          date: removed.date,
+          description: removed.description,
+          value: removed.value,
+          source: removed.source || null
+        });
+      }
     }
   }
 
@@ -307,17 +319,44 @@ const deduplicateTransactions = (transactions) => {
     // same day (common on NuPay ride reversals/estornos). Remove both from spend.
     const allCardCsv = group.every((x) => (x.t.source || '').includes('card_csv'));
     if (allCardCsv && isLikelyNuPayRide(group[0].normDesc)) {
-      for (const x of group) mirrorRemove.add(x.index);
+      for (const x of group) {
+        mirrorRemove.add(x.index);
+        auditEntries.push({
+          reason: 'nupay_ride_reversal_pair',
+          date: x.t.date,
+          description: x.t.description,
+          value: x.t.value,
+          source: x.t.source || null
+        });
+      }
       continue;
     }
 
     const preferredSign = choosePreferredSign(group[0].normDesc);
     if (preferredSign === 1) {
-      for (const x of neg) mirrorRemove.add(x.index);
+      for (const x of neg) {
+        mirrorRemove.add(x.index);
+        auditEntries.push({
+          reason: 'mirror_sign_prefer_inflow',
+          date: x.t.date,
+          description: x.t.description,
+          value: x.t.value,
+          source: x.t.source || null
+        });
+      }
       continue;
     }
     if (preferredSign === -1) {
-      for (const x of pos) mirrorRemove.add(x.index);
+      for (const x of pos) {
+        mirrorRemove.add(x.index);
+        auditEntries.push({
+          reason: 'mirror_sign_prefer_outflow',
+          date: x.t.date,
+          description: x.t.description,
+          value: x.t.value,
+          source: x.t.source || null
+        });
+      }
       continue;
     }
 
@@ -327,7 +366,16 @@ const deduplicateTransactions = (transactions) => {
       .sort((a, b) => scoreSource(b.t.source) - scoreSource(a.t.source));
     const keeper = sorted[0];
     for (const x of group) {
-      if (x.index !== keeper.index) mirrorRemove.add(x.index);
+      if (x.index !== keeper.index) {
+        mirrorRemove.add(x.index);
+        auditEntries.push({
+          reason: 'mirror_unknown_keep_best_source',
+          date: x.t.date,
+          description: x.t.description,
+          value: x.t.value,
+          source: x.t.source || null
+        });
+      }
     }
   }
 
@@ -386,14 +434,38 @@ const deduplicateTransactions = (transactions) => {
         const diff = Math.abs(p.abs - x.abs);
         if (diff <= 2.0) {
           // Keep the larger absolute value and drop the smaller counterpart.
-          if (p.abs >= x.abs) pixCreditRemove.add(x.index);
-          else pixCreditRemove.add(p.index);
+          if (p.abs >= x.abs) {
+            pixCreditRemove.add(x.index);
+            auditEntries.push({
+              reason: 'pix_credit_keep_larger_value',
+              date: x.t.date,
+              description: x.t.description,
+              value: x.t.value,
+              source: x.t.source || null,
+              keptReference: p.t.description,
+              keptValue: p.t.value
+            });
+          } else {
+            pixCreditRemove.add(p.index);
+            auditEntries.push({
+              reason: 'pix_credit_keep_larger_value',
+              date: p.t.date,
+              description: p.t.description,
+              value: p.t.value,
+              source: p.t.source || null,
+              keptReference: x.t.description,
+              keptValue: x.t.value
+            });
+          }
         }
       }
     }
   }
 
-  return withoutMirrors.filter((_, idx) => !pixCreditRemove.has(idx));
+  return {
+    transactions: withoutMirrors.filter((_, idx) => !pixCreditRemove.has(idx)),
+    auditEntries
+  };
 };
 
 /**
@@ -548,10 +620,18 @@ const inferPersonFromDescription = (transactions) => {
 
   // Deduplicate (important when importing from both CSV and OFX)
   const beforeDedup = merged.length;
-  merged = deduplicateTransactions(merged);
+  const dedupResult = deduplicateTransactions(merged);
+  merged = dedupResult.transactions;
   if (beforeDedup !== merged.length) {
     console.log(`🔄 Deduplicated: ${beforeDedup} → ${merged.length}`);
   }
+
+  await fs.writeFile(AUDIT_FILE, JSON.stringify({
+    generatedAt: new Date().toISOString(),
+    removedCount: dedupResult.auditEntries.length,
+    items: dedupResult.auditEntries
+  }, null, 2));
+  console.log(`🧾 Audit saved: ${dedupResult.auditEntries.length} removals in ${AUDIT_FILE}`);
 
     // Sort newest first
     merged.sort((a, b) => new Date(b.date) - new Date(a.date));
