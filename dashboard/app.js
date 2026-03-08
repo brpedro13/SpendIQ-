@@ -75,6 +75,7 @@ function setupEventListeners() {
 
     // AI buttons
     document.getElementById('aiCategorize').addEventListener('click', runAiCategorization);
+    document.getElementById('aiForgetAll').addEventListener('click', forgetAllAiMemory);
     document.getElementById('aiApplyAll').addEventListener('click', applyAllAiResults);
     document.getElementById('aiApplyRules').addEventListener('click', applyAiRules);
     document.getElementById('aiDismiss').addEventListener('click', dismissAiResults);
@@ -214,6 +215,34 @@ async function runGmailSync() {
     } finally {
         btn.disabled = false;
         btn.innerHTML = '<span class="ai-btn-icon">📬</span> Sync Gmail';
+    }
+}
+
+async function forgetAllAiMemory() {
+    const btn = document.getElementById('aiForgetAll');
+    const confirmed = window.confirm(
+        'Isso vai apagar regras, ignores e overrides salvos, reprocessar os dados e recarregar a tela. Deseja continuar?'
+    );
+    if (!confirmed) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="ai-spinner"></span> Limpando...';
+
+    try {
+        const response = await fetch('/api/ai/forget-all', { method: 'POST' });
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+            throw new Error(result.error || `HTTP ${response.status}`);
+        }
+
+        localStorage.removeItem('finance_overrides');
+        showToast('🧹 Memória limpa. Recarregando com regra padrão (pedro)...', 'success');
+        setTimeout(() => location.reload(), 1200);
+    } catch (error) {
+        showToast(`❌ Erro ao limpar memória: ${error.message}`, 'error');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<span class="ai-btn-icon">🧹</span> Esquecer Tudo';
     }
 }
 

@@ -167,6 +167,8 @@ header p { font-size: 1.1rem; opacity: 0.9; }
 .ai-btn-sync { background: linear-gradient(135deg, #00c853, #009624); color: white; box-shadow: 0 2px 8px rgba(0, 200, 83, 0.3); }
 .ai-btn-sync:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(0, 200, 83, 0.5); }
 .ai-btn-sync:disabled { opacity: 0.4; }
+.ai-btn-danger { background: linear-gradient(135deg, #ef5350, #c62828); color: white; box-shadow: 0 2px 8px rgba(198, 40, 40, 0.3); }
+.ai-btn-danger:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 4px 16px rgba(198, 40, 40, 0.5); }
 
 /* AI Status */
 .ai-status {

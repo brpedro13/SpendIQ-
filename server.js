@@ -196,10 +196,10 @@ ${transactionList}
 Responda SOMENTE com JSON válido. Formato:
 {
   "categorizations": [
-    {"index": 1, "description": "desc", "category": "cat", "for": "ambos", "confidence": "high", "reasoning": "motivo curto"}
+        {"index": 1, "description": "desc", "category": "cat", "for": "pedro", "confidence": "high", "reasoning": "motivo curto"}
   ],
   "suggested_rules": [
-    {"keyword": "palavra curta", "category": "cat", "for": "ambos", "reasoning": "motivo"}
+        {"keyword": "palavra curta", "category": "cat", "for": "pedro", "reasoning": "motivo"}
   ],
   "suggested_ignores": [
     {"keyword": "palavra-chave", "reason": "motivo"}
@@ -380,6 +380,40 @@ app.post('/api/ai/apply-categorizations', async (req, res) => {
     } catch (error) {
         console.error('Error applying categorizations:', error);
         res.status(500).json({ error: 'Failed to apply categorizations' });
+    }
+});
+
+// Forget AI memory (rules, ignores and overrides) and rebuild merged data
+app.post('/api/ai/forget-all', async (req, res) => {
+    try {
+        const rulesPath = path.join(__dirname, 'config', 'rules.json');
+        const ignorePath = path.join(__dirname, 'config', 'ignore.json');
+        const overridesPath = path.join(__dirname, 'data', 'overrides.json');
+
+        const emptyRules = {};
+        const emptyIgnore = {
+            description: 'Configuration for ignoring specific transactions',
+            rules: []
+        };
+        const emptyOverrides = {
+            description: 'Manual overrides',
+            overrides: {},
+            version: '1.0'
+        };
+
+        await fs.writeFile(rulesPath, JSON.stringify(emptyRules, null, 2));
+        await fs.writeFile(ignorePath, JSON.stringify(emptyIgnore, null, 2));
+        await fs.writeFile(overridesPath, JSON.stringify(emptyOverrides, null, 2));
+
+        await runParse();
+
+        res.json({
+            success: true,
+            message: 'Memória da IA limpa e dados reprocessados.'
+        });
+    } catch (error) {
+        console.error('Error forgetting AI memory:', error);
+        res.status(500).json({ error: `Falha ao limpar memória: ${error.message}` });
     }
 });
 
