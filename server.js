@@ -90,10 +90,14 @@ async function callAi(prompt, config) {
         return data.content.find(c => c.type === 'text')?.text || '';
     }
 
+    const groqFallbackFromEnv = cleanEnv(process.env.GROQ_FALLBACK_MODELS || '')
+        .split(',')
+        .map((m) => m.trim())
+        .filter(Boolean);
     const groqModelsToTry = [
         config.model,
-        'llama-3.1-8b-instant',
-        'llama-3.2-3b-preview'
+        ...groqFallbackFromEnv,
+        'llama-3.1-8b-instant'
     ].filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i);
 
     const callGroqModel = async (model) => {
@@ -137,8 +141,13 @@ async function callAi(prompt, config) {
         } catch (err) {
             lastErr = err;
             const isRateLimit = Number(err.status) === 429 || /rate[_\s-]?limit/i.test(String(err.message));
-            if (!isRateLimit) throw err;
-            console.warn(`⚠️  Rate limit on model ${err.modelTried || model}`);
+            const isModelDecommissioned = /model_decommissioned|decommissioned|no longer supported/i.test(String(err.rawText || err.message));
+            if (!isRateLimit && !isModelDecommissioned) throw err;
+            if (isModelDecommissioned) {
+                console.warn(`⚠️  Model decommissioned: ${err.modelTried || model}`);
+            } else {
+                console.warn(`⚠️  Rate limit on model ${err.modelTried || model}`);
+            }
             continue;
         }
     }
