@@ -169,6 +169,37 @@ const deduplicateTransactions = (transactions) => {
   });
 };
 
+// Remove mirrored pairs where the same transaction appears once positive and
+// once negative (same day, normalized description, same absolute amount).
+// In those pairs, we keep the negative entries because this project tracks
+// spending and these mirrors are usually export artifacts.
+const removeMirroredSignPairs = (transactions) => {
+  const groups = new Map();
+
+  transactions.forEach((t, index) => {
+    const absValue = Number.parseFloat(Math.abs(Number(t.value || 0)).toFixed(2));
+    if (!Number.isFinite(absValue) || absValue === 0) return;
+    const key = `${t.date}|${normalizeForDedup(t.description)}|${absValue.toFixed(2)}`;
+    if (!groups.has(key)) groups.set(key, { positives: [], negatives: [] });
+    if (Number(t.value) > 0) groups.get(key).positives.push(index);
+    if (Number(t.value) < 0) groups.get(key).negatives.push(index);
+  });
+
+  const toRemove = new Set();
+  for (const group of groups.values()) {
+    const pairCount = Math.min(group.positives.length, group.negatives.length);
+    for (let i = 0; i < pairCount; i++) {
+      toRemove.add(group.positives[i]);
+    }
+  }
+
+  if (toRemove.size === 0) return { cleaned: transactions, removed: 0 };
+  return {
+    cleaned: transactions.filter((_, idx) => !toRemove.has(idx)),
+    removed: toRemove.size
+  };
+};
+
 /**
  * Try to infer the "for" field (who) from description patterns when it's unknown.
  * This covers common bank strings like "Transferência Recebida - NAME - ..." or
@@ -324,6 +355,13 @@ const inferPersonFromDescription = (transactions) => {
   merged = deduplicateTransactions(merged);
     if (beforeDedup !== merged.length) {
       console.log(`🔄 Deduplicated: ${beforeDedup} → ${merged.length}`);
+    }
+
+    // Remove mirrored + and - duplicates (same transaction represented twice)
+    const mirrored = removeMirroredSignPairs(merged);
+    merged = mirrored.cleaned;
+    if (mirrored.removed > 0) {
+      console.log(`🧹 Removed mirrored sign pairs: -${mirrored.removed}`);
     }
 
     // Sort newest first
