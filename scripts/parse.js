@@ -280,6 +280,11 @@ const deduplicateTransactions = (transactions) => {
     return 0;
   };
 
+  const isLikelyNuPayRide = (normDesc) => {
+    const d = normDesc || '';
+    return d.includes('nupay') && (d.includes('uber') || d.includes('99'));
+  };
+
   const choosePreferredSign = (normDesc) => {
     const inflowHints = [
       'recebida', 'recebido', 'reembolso', 'cashback', 'estorno', 'devolucao', 'devolução'
@@ -297,6 +302,14 @@ const deduplicateTransactions = (transactions) => {
     const pos = group.filter((x) => Number(x.t.value) > 0);
     const neg = group.filter((x) => Number(x.t.value) < 0);
     if (pos.length === 0 || neg.length === 0) continue;
+
+    // Card statement reversal pattern: same merchant appears with + and - on the
+    // same day (common on NuPay ride reversals/estornos). Remove both from spend.
+    const allCardCsv = group.every((x) => (x.t.source || '').includes('card_csv'));
+    if (allCardCsv && isLikelyNuPayRide(group[0].normDesc)) {
+      for (const x of group) mirrorRemove.add(x.index);
+      continue;
+    }
 
     const preferredSign = choosePreferredSign(group[0].normDesc);
     if (preferredSign === 1) {
@@ -318,7 +331,69 @@ const deduplicateTransactions = (transactions) => {
     }
   }
 
-  return withoutCrossSourceDupes.filter((_, idx) => !mirrorRemove.has(idx));
+  const withoutMirrors = withoutCrossSourceDupes.filter((_, idx) => !mirrorRemove.has(idx));
+
+  // 4) Pix no crédito pattern: card row with person name + debit pix row to the
+  // same person/date. Keep only the larger absolute value to avoid double count.
+  const normalizePersonName = (name) =>
+    (name || '')
+      .toString()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-z\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+
+  const extractPixPersonName = (desc) => {
+    const d = (desc || '').toString();
+    const m = d.match(/transfer[êe]ncia\s+enviada\s+pelo\s+pix\s*-\s*([^\-\(]+)/i);
+    return m ? normalizePersonName(m[1]) : '';
+  };
+
+  const isNameOnlyDescription = (desc) => {
+    const n = normalizePersonName(desc);
+    if (!n) return false;
+    const words = n.split(' ').filter(Boolean);
+    return words.length >= 2 && words.length <= 5;
+  };
+
+  const pixCreditGroups = new Map();
+  withoutMirrors.forEach((t, index) => {
+    const value = Number(t.value || 0);
+    if (!(value < 0)) return;
+
+    const nameFromPlain = isNameOnlyDescription(t.description)
+      ? normalizePersonName(t.description)
+      : '';
+    const nameFromPix = extractPixPersonName(t.description);
+    const personName = nameFromPlain || nameFromPix;
+    if (!personName) return;
+
+    const key = `${t.date}|${personName}`;
+    if (!pixCreditGroups.has(key)) pixCreditGroups.set(key, []);
+    pixCreditGroups.get(key).push({ t, index, nameFromPlain, nameFromPix, abs: Math.abs(value) });
+  });
+
+  const pixCreditRemove = new Set();
+  for (const items of pixCreditGroups.values()) {
+    const plain = items.filter((x) => x.nameFromPlain);
+    const pix = items.filter((x) => x.nameFromPix);
+    if (plain.length === 0 || pix.length === 0) continue;
+
+    for (const p of plain) {
+      for (const x of pix) {
+        const diff = Math.abs(p.abs - x.abs);
+        if (diff <= 2.0) {
+          // Keep the larger absolute value and drop the smaller counterpart.
+          if (p.abs >= x.abs) pixCreditRemove.add(x.index);
+          else pixCreditRemove.add(p.index);
+        }
+      }
+    }
+  }
+
+  return withoutMirrors.filter((_, idx) => !pixCreditRemove.has(idx));
 };
 
 /**
