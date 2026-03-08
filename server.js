@@ -311,6 +311,11 @@ REGRAS:
 
 function inferFallbackCategorization(transaction) {
     const description = (transaction?.description || '').toLowerCase();
+    const normalized = normalizeText(description);
+
+    const isLikelyPersonOnly = /^[a-z\s]+$/.test(normalized)
+        && normalized.trim().split(/\s+/).length >= 2
+        && normalized.trim().split(/\s+/).length <= 5;
 
     let forWhom = 'pedro';
     if (description.includes('ana luiza gonçalves sousa')) {
@@ -324,9 +329,24 @@ function inferFallbackCategorization(transaction) {
         description.includes('transferência') ||
         description.includes('transferencia') ||
         description.includes('pix') ||
-        description.includes('reembolso recebido')
+        description.includes('reembolso recebido') ||
+        isLikelyPersonOnly
     ) {
         category = 'transferencia';
+    } else if (/mercadolivre|mercado\*mercadolivre|amazon|americanas|olx|alipay|magazi/.test(normalized)) {
+        category = 'compras online';
+    } else if (/smartfit|fitnessnation|academia|gym/.test(normalized)) {
+        category = 'academia';
+    } else if (/burger king|ifood|food|churra|massas|cafe|bebidas|bondinho pao|princesa leblon|jacksonpqueij/.test(normalized)) {
+        category = 'alimentação';
+    } else if (/google claude|spotify|netflix|deezer|prime video/.test(normalized)) {
+        category = 'assinatura';
+    } else if (/porto seguro/.test(normalized)) {
+        category = 'seguro';
+    } else if (/drogasmil|drogaria|farm ecommerce|farmacia/.test(normalized)) {
+        category = 'farmácia';
+    } else if (/recarga de celular/.test(normalized)) {
+        category = 'transporte';
     }
 
     return {
@@ -404,12 +424,9 @@ function isSaneCategoryForText(category, text) {
 
 function shouldTrustAiCategorization(cat, description) {
     if (!cat || !cat.category) return false;
-    const reason = String(cat.reasoning || '');
     const saneCategory = isSaneCategoryForText(cat.category, description);
-    const hasGenericReason = GENERIC_REASON_PATTERNS.some((rx) => rx.test(reason));
 
     if (!saneCategory) return false;
-    if (hasGenericReason && cat.category !== 'compras online') return false;
     return true;
 }
 
@@ -433,6 +450,8 @@ function findBestRuleMatch(description, rules) {
 function shouldAcceptSuggestedRule(rule) {
     const normalizedKeyword = normalizeRuleKeyword(rule?.keyword || '');
     if (!shouldAcceptRuleKeyword(normalizedKeyword)) return false;
+    const reason = String(rule?.reasoning || '');
+    if (GENERIC_REASON_PATTERNS.some((rx) => rx.test(reason))) return false;
     return isSaneCategoryForText(rule?.category, normalizedKeyword);
 }
 
@@ -614,11 +633,11 @@ app.post('/api/ai/apply-rules', async (req, res) => {
         let ignoredRules = 0;
         if (rules && rules.length > 0) {
             for (const rule of rules) {
-                const normalizedKeyword = normalizeRuleKeyword(rule.keyword);
-                if (!shouldAcceptRuleKeyword(normalizedKeyword)) {
+                if (!shouldAcceptSuggestedRule(rule)) {
                     ignoredRules++;
                     continue;
                 }
+                const normalizedKeyword = normalizeRuleKeyword(rule.keyword);
                 currentRules[normalizedKeyword] = { category: rule.category, for: rule.for };
                 acceptedRules++;
             }

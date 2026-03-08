@@ -20,7 +20,21 @@ const BASELINE_RULES = {
   "spotify": { category: "assinatura", for: "ambos" },
   "ebw*spotify": { category: "assinatura", for: "ambos" },
   "drogasmil": { category: "farmácia", for: "ambos" },
-  "drogaria venancio": { category: "farmácia", for: "ambos" }
+  "drogaria venancio": { category: "farmácia", for: "ambos" },
+  "mercadolivre": { category: "compras online", for: "pedro" },
+  "mercado*mercadolivre": { category: "compras online", for: "pedro" },
+  "amazonmktplc": { category: "compras online", for: "pedro" },
+  "lojas americanas": { category: "compras online", for: "pedro" },
+  "smartfit": { category: "academia", for: "pedro" },
+  "google claude by anth": { category: "assinatura", for: "pedro" },
+  "burger king": { category: "alimentação", for: "pedro" },
+  "carioca bebidas": { category: "alimentação", for: "pedro" },
+  "dani 2001 massas": { category: "alimentação", for: "pedro" },
+  "cafe 18 do forte": { category: "alimentação", for: "pedro" },
+  "companhiadochurra": { category: "alimentação", for: "pedro" },
+  "bondinho pao": { category: "alimentação", for: "pedro" },
+  "porto seguro": { category: "seguro", for: "pedro" },
+  "recarga de celular": { category: "transporte", for: "pedro" }
 };
 
 const BLOCKED_GENERIC_KEYWORDS = new Set([
@@ -103,6 +117,10 @@ const applyRules = (description, rules) => {
 
 const inferFallbackClassification = (description) => {
   const lowerDesc = (description || "").toLowerCase();
+  const normalized = normalizeRuleKeyword(description || "");
+  const isLikelyPersonOnly = /^[a-z\s]+$/.test(normalized)
+    && normalized.trim().split(/\s+/).length >= 2
+    && normalized.trim().split(/\s+/).length <= 5;
 
   let forWhom = "pedro";
   if (lowerDesc.includes("ana luiza gonçalves sousa")) {
@@ -116,9 +134,24 @@ const inferFallbackClassification = (description) => {
     lowerDesc.includes("transferência") ||
     lowerDesc.includes("transferencia") ||
     lowerDesc.includes("pix") ||
-    lowerDesc.includes("reembolso recebido")
+    lowerDesc.includes("reembolso recebido") ||
+    isLikelyPersonOnly
   ) {
     category = "transferencia";
+  } else if (/mercadolivre|mercado\*mercadolivre|amazon|americanas|olx|alipay|magazi/.test(normalized)) {
+    category = "compras online";
+  } else if (/smartfit|fitnessnation|academia|gym/.test(normalized)) {
+    category = "academia";
+  } else if (/burger king|ifood|food|churra|massas|cafe|bebidas|bondinho pao|princesa leblon|jacksonpqueij/.test(normalized)) {
+    category = "alimentação";
+  } else if (/google claude|spotify|netflix|deezer|prime video/.test(normalized)) {
+    category = "assinatura";
+  } else if (/porto seguro/.test(normalized)) {
+    category = "seguro";
+  } else if (/drogasmil|drogaria|farm ecommerce|farmacia/.test(normalized)) {
+    category = "farmácia";
+  } else if (/recarga de celular/.test(normalized)) {
+    category = "transporte";
   }
 
   return { category, for: forWhom };
@@ -685,6 +718,12 @@ const inferPersonFromDescription = (transactions) => {
       // possibly misspelled variants – the user conversation contained both z and m
       { regex: /armaze[mn] urbano/i, category: 'mercado' },
       { regex: /drive digital tecnologia/i, category: 'compras online' },
+      { regex: /mercadolivre|mercado\*mercadolivre|amazonmktplc|americanas|alipay|olx|magazi/i, category: 'compras online' },
+      { regex: /smartfit|fitnessnation|academia|gym/i, category: 'academia' },
+      { regex: /burger king|bondinho pao|companhiadochurra|carioca bebidas|dani 2001 massas|cafe 18 do forte|jacksonpqueij|princesa leblon/i, category: 'alimentação' },
+      { regex: /google claude|spotify|netflix|deezer|prime video/i, category: 'assinatura' },
+      { regex: /porto seguro/i, category: 'seguro' },
+      { regex: /recarga de celular/i, category: 'transporte' },
       // add additional heuristics here as needed
     ];
     for (const t of transactions) {
@@ -693,6 +732,9 @@ const inferPersonFromDescription = (transactions) => {
       for (const p of list) {
         if (p.regex.test(d)) {
           t.category = p.category;
+          if (!t.classification_source || t.classification_source === 'fallback') {
+            t.classification_source = 'fallback_heuristic';
+          }
           break;
         }
       }

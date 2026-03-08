@@ -24,20 +24,20 @@
     "for": "ambos"
   },
   "burger king": {
-    "category": "fast food",
-    "for": "ambos"
+    "category": "alimentação",
+    "for": "pedro"
   },
   "companhiadochurra": {
-    "category": "restaurante",
-    "for": "ambos"
+    "category": "alimentação",
+    "for": "pedro"
   },
   "princesa leblon": {
     "category": "restaurante",
     "for": "ambos"
   },
   "cafe 18 do forte": {
-    "category": "restaurante",
-    "for": "ambos"
+    "category": "alimentação",
+    "for": "pedro"
   },
   "dani 2001": {
     "category": "restaurante",
@@ -53,7 +53,7 @@
   },
   "carioca bebidas": {
     "category": "alimentação",
-    "for": "ambos"
+    "for": "pedro"
   },
   "nycc": {
     "category": "cinema",
@@ -73,11 +73,11 @@
   },
   "mercadolivre": {
     "category": "compras online",
-    "for": "ambos"
+    "for": "pedro"
   },
   "mercado*mercadolivre": {
     "category": "compras online",
-    "for": "ambos"
+    "for": "pedro"
   },
   "americanas": {
     "category": "compras online",
@@ -137,7 +137,7 @@
   },
   "porto seguro": {
     "category": "seguro",
-    "for": "ambos"
+    "for": "pedro"
   },
   "bondinho": {
     "category": "lazer",
@@ -182,5 +182,29 @@
   "drogaria venancio": {
     "category": "farmácia",
     "for": "ambos"
+  },
+  "amazonmktplc": {
+    "category": "compras online",
+    "for": "pedro"
+  },
+  "lojas americanas": {
+    "category": "compras online",
+    "for": "pedro"
+  },
+  "google claude by anth": {
+    "category": "assinatura",
+    "for": "pedro"
+  },
+  "dani 2001 massas": {
+    "category": "alimentação",
+    "for": "pedro"
+  },
+  "bondinho pao": {
+    "category": "alimentação",
+    "for": "pedro"
+  },
+  "recarga de celular": {
+    "category": "transporte",
+    "for": "pedro"
   }
 }
