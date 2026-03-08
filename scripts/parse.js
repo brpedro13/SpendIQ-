@@ -120,6 +120,44 @@ const normalizeAmount = (amountStr) => {
   return Number.parseFloat(cleaned.replace(",", "."));
 };
 
+// Collapse duplicated export files like "file_1773008173204.csv" by keeping
+// the canonical non-suffixed filename when available.
+const selectCanonicalFiles = (files) => {
+  const canonicalMap = new Map();
+
+  const canonicalName = (file) =>
+    file.toLowerCase().replace(/_\d{10,}(?=\.[^.]+$)/, '');
+
+  for (const file of files) {
+    const key = canonicalName(file);
+    const existing = canonicalMap.get(key);
+    if (!existing) {
+      canonicalMap.set(key, file);
+      continue;
+    }
+
+    const currentHasTimestamp = /_\d{10,}(?=\.[^.]+$)/.test(file);
+    const existingHasTimestamp = /_\d{10,}(?=\.[^.]+$)/.test(existing);
+
+    // Prefer stable non-timestamped files over auto-export copies.
+    if (!currentHasTimestamp && existingHasTimestamp) {
+      canonicalMap.set(key, file);
+      continue;
+    }
+    if (currentHasTimestamp && !existingHasTimestamp) {
+      continue;
+    }
+
+    // If both are of same type (both timestamped or both stable), keep the
+    // lexicographically last one as deterministic fallback.
+    if (file > existing) {
+      canonicalMap.set(key, file);
+    }
+  }
+
+  return [...canonicalMap.values()].sort();
+};
+
 const processNubankCsv = (rows, rules) => {
   return rows.map((row) => {
     const title = getField(row, ["title", "Título", "descricao", "Descrição", "description"]);
@@ -355,8 +393,8 @@ const inferPersonFromDescription = (transactions) => {
     let merged = [];
 
     const files = await fs.readdir(DATA_DIR);
-    const csvFiles = files.filter(f => f.toLowerCase().endsWith('.csv'));
-    const ofxFiles = files.filter(f => f.toLowerCase().endsWith('.ofx'));
+    const csvFiles = selectCanonicalFiles(files.filter(f => f.toLowerCase().endsWith('.csv')));
+    const ofxFiles = selectCanonicalFiles(files.filter(f => f.toLowerCase().endsWith('.ofx')));
 
     console.log(`📁 Found ${csvFiles.length} CSV + ${ofxFiles.length} OFX files`);
 

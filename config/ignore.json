@@ -60,11 +60,11 @@
       "type": "description_contains",
       "value": "lucas pereira pacheco medeiros recebida",
       "reason": "não é gasto"
+    },
+    {
+      "type": "description_contains",
+      "value": "Reembolso recebido",
+      "reason": "Devolução/chargeback - não é gasto real"
     }
   ]
 }
-      {
-        "type": "description_contains",
-        "value": "Reembolso recebido",
-        "reason": "Devolução/chargeback — não é gasto real"
-      }
