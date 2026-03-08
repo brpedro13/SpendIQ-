@@ -5,7 +5,7 @@
   "main": "server.js",
   "scripts": {
     "parse": "node scripts/parse.js",
-    "serve": "node -e \"require('fs').copyFileSync('data/merged.json','dashboard/data/merged.json')\" && node server.js",
+    "serve": "node scripts/prepare-dirs.js && node -e \"require('fs').copyFileSync('data/merged.json','dashboard/data/merged.json')\" && node server.js",
     "build": "node scripts/create-empty-merged.js && npm run parse",
     "start": "npm run build && npm run serve",
     "dev": "npm run parse && npm run serve",
