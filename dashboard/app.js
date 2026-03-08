@@ -818,20 +818,34 @@ async function saveOverride(key, field, newValue) {
 }
 
 async function saveOverridesToFile(key, field, newValue) {
-    let overrides = { description: "Manual overrides", overrides: {}, version: "1.0" };
     try {
-        const stored = localStorage.getItem('finance_overrides');
-        if (stored) overrides = JSON.parse(stored);
-        else {
-            const r = await fetch('./data/overrides.json');
-            if (r.ok) overrides = await r.json();
+        // Sync with server first
+        const response = await fetch('/api/save-override', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key, field, value: newValue })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Server error: ${response.status}`);
         }
-    } catch {}
-
-    if (!overrides.overrides[key]) overrides.overrides[key] = {};
-    overrides.overrides[key][field] = newValue;
-    localStorage.setItem('finance_overrides', JSON.stringify(overrides));
-    showToast(`✅ Saved: ${field} = ${newValue}`, 'success');
+        
+        // Also keep localStorage in sync as fallback
+        let overrides = { description: "Manual overrides", overrides: {}, version: "1.0" };
+        try {
+            const stored = localStorage.getItem('finance_overrides');
+            if (stored) overrides = JSON.parse(stored);
+        } catch {}
+        
+        if (!overrides.overrides[key]) overrides.overrides[key] = {};
+        overrides.overrides[key][field] = newValue;
+        localStorage.setItem('finance_overrides', JSON.stringify(overrides));
+        
+        showToast(`✅ Saved: ${field} = ${newValue}`, 'success');
+    } catch (error) {
+        console.error('Error saving override to server:', error);
+        alert('Failed to save override to server.');
+    }
 }
 
 function exportOverrides() {
