@@ -32,7 +32,8 @@ export function parseOfx(content, rules, applyRules) {
         if (!description) continue;
 
         // Apply categorization rules
-        const { category, for: forWhom } = applyRules(description, rules);
+        const ruleResult = applyRules(description, rules);
+        const { category, for: forWhom } = ruleResult;
 
         transactions.push({
             date,
@@ -40,6 +41,7 @@ export function parseOfx(content, rules, applyRules) {
             value: amount,
             category,
             for: forWhom,
+            classification_source: ruleResult.matched ? 'rule' : 'fallback',
             source: 'nubank_debit_ofx',
             transactionId: fitId,
             fitId // unique ID to avoid duplicates

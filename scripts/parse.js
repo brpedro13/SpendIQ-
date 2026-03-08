@@ -42,12 +42,12 @@ const getField = (row, keys) => {
 };
 
 const applyRules = (description, rules) => {
-  if (!description) return { category: "uncategorized", for: "pedro" };
+  if (!description) return { category: "uncategorized", for: "pedro", matched: false };
   const lowerDesc = description.toLowerCase();
   for (const [keyword, rule] of Object.entries(rules)) {
-    if (lowerDesc.includes(keyword.toLowerCase())) return rule;
+    if (lowerDesc.includes(keyword.toLowerCase())) return { ...rule, matched: true };
   }
-  return { category: "uncategorized", for: "pedro" };
+  return { category: "uncategorized", for: "pedro", matched: false };
 };
 
 const inferFallbackClassification = (description) => {
@@ -97,7 +97,8 @@ const applyOverrides = (transactions, overrides) => {
         ...t,
         category: overrides.overrides[key].category || t.category,
         for: overrides.overrides[key].for || t.for,
-        manual_override: true
+        manual_override: true,
+        classification_source: "manual_override"
       };
     }
     return t;
@@ -164,7 +165,9 @@ const processNubankCsv = (rows, rules) => {
     const title = getField(row, ["title", "Título", "descricao", "Descrição", "description"]);
     const amount = getField(row, ["amount", "valor", "Valor"]);
     const date = getField(row, ["date", "data", "Data"]);
-    let { category, for: forWhom } = applyRules(title, rules);
+    const ruleResult = applyRules(title, rules);
+    let { category, for: forWhom } = ruleResult;
+    let classificationSource = ruleResult.matched ? "rule" : "fallback";
     if (category === "uncategorized") {
       const inferred = inferFallbackClassification(title);
       category = inferred.category;
@@ -175,7 +178,10 @@ const processNubankCsv = (rows, rules) => {
       date: normalizeDate(date),
       description: title?.trim() || "",
       value: rawValue * -1,
-      category, for: forWhom, source: "nubank_card_csv"
+      category,
+      for: forWhom,
+      source: "nubank_card_csv",
+      classification_source: classificationSource
     };
   });
 };
@@ -186,7 +192,9 @@ const processNubankDebitCsv = (rows, rules) => {
     const date = getField(row, ["Data", "data", "date"]);
     const value = getField(row, ["Valor", "valor", "amount"]);
     const transactionId = getField(row, ["Identificador", "identifier", "transaction_id", "id"]);
-    let { category, for: forWhom } = applyRules(description, rules);
+    const ruleResult = applyRules(description, rules);
+    let { category, for: forWhom } = ruleResult;
+    let classificationSource = ruleResult.matched ? "rule" : "fallback";
     if (category === "uncategorized") {
       const inferred = inferFallbackClassification(description);
       category = inferred.category;
@@ -197,7 +205,10 @@ const processNubankDebitCsv = (rows, rules) => {
       description: description?.trim() || "",
       value: normalizeAmount(value),
       transactionId: transactionId?.trim() || undefined,
-      category, for: forWhom, source: "nubank_debit_csv"
+      category,
+      for: forWhom,
+      source: "nubank_debit_csv",
+      classification_source: classificationSource
     };
   });
 };
@@ -586,7 +597,18 @@ const inferPersonFromDescription = (transactions) => {
       const content = await fs.readFile(filePath, "utf8");
       const ofxTransactions = parseOfx(content, rules, applyRules);
 
-      const filtered = ofxTransactions.filter(t => !shouldIgnoreTransaction(t, ignoreConfig));
+      const filtered = ofxTransactions
+        .filter(t => !shouldIgnoreTransaction(t, ignoreConfig))
+        .map((t) => {
+          if (t.category !== 'uncategorized') return t;
+          const inferred = inferFallbackClassification(t.description);
+          return {
+            ...t,
+            category: inferred.category,
+            for: inferred.for,
+            classification_source: 'fallback'
+          };
+        });
       const ignored = ofxTransactions.length - filtered.length;
       if (ignored > 0) console.log(`🚫 Ignored ${ignored} transactions from ${file}`);
       merged.push(...filtered);

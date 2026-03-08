@@ -33,12 +33,29 @@ async function loadData() {
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         transactions = await response.json();
         applyLocalStorageOverrides();
+        enrichTransactionConfidence();
         filteredTransactions = [...transactions];
         console.log(`Loaded ${transactions.length} transactions`);
     } catch (error) {
         console.error('Error loading data:', error);
         throw error;
     }
+}
+
+function enrichTransactionConfidence() {
+    transactions = transactions.map((t) => {
+        const source = (t.classification_source || '').toLowerCase();
+        if (t.manual_override || source === 'manual_override') {
+            return { ...t, confidence_level: 'high', confidence_source: 'IA/Manual' };
+        }
+        if (source === 'rule') {
+            return { ...t, confidence_level: 'medium', confidence_source: 'Regra' };
+        }
+        if (source === 'fallback' || t.category === 'uncategorized' || t.for === 'unknown') {
+            return { ...t, confidence_level: 'low', confidence_source: 'Fallback' };
+        }
+        return { ...t, confidence_level: 'medium', confidence_source: 'Regra' };
+    });
 }
 
 // Apply overrides from localStorage
@@ -401,6 +418,9 @@ async function applyAllAiResults() {
                     t.category = cat.category;
                     t.for = cat.for;
                     t.manual_override = true;
+                    t.classification_source = 'manual_override';
+                    t.confidence_level = 'high';
+                    t.confidence_source = 'IA/Manual';
                 }
             }
         }
@@ -462,8 +482,73 @@ function dismissAiResults() {
 
 function renderDashboard() {
     renderStats();
+    renderFinancialAlerts();
     populateFilters();
     applyFilters();
+}
+
+function renderFinancialAlerts() {
+    const container = document.getElementById('alertsList');
+    if (!container) return;
+
+    const outflows = filteredTransactions.filter(t => Number(t.value) < 0);
+    const alerts = [];
+
+    // Alert 1: transporte month-over-month spike
+    const transportByMonth = {};
+    for (const t of outflows.filter(t => (t.category || '').toLowerCase().includes('transporte'))) {
+        const d = new Date(t.date);
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        transportByMonth[key] = (transportByMonth[key] || 0) + Math.abs(Number(t.value));
+    }
+    const months = Object.keys(transportByMonth).sort();
+    if (months.length >= 2) {
+        const last = months[months.length - 1];
+        const prev = months[months.length - 2];
+        const lastValue = transportByMonth[last] || 0;
+        const prevValue = transportByMonth[prev] || 0;
+        if (prevValue > 0) {
+            const changePct = ((lastValue - prevValue) / prevValue) * 100;
+            if (changePct >= 30) {
+                alerts.push({
+                    type: 'warning',
+                    title: 'Transporte subiu forte',
+                    body: `${last}: +${changePct.toFixed(1)}% vs ${prev} (R$ ${lastValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
+                });
+            }
+        }
+    }
+
+    // Alert 2: outliers above dynamic threshold
+    const values = outflows.map(t => Math.abs(Number(t.value))).filter(v => Number.isFinite(v));
+    if (values.length >= 8) {
+        const avg = values.reduce((s, v) => s + v, 0) / values.length;
+        const variance = values.reduce((s, v) => s + ((v - avg) ** 2), 0) / values.length;
+        const std = Math.sqrt(variance);
+        const threshold = Math.max(100, avg + 2 * std);
+        const outlier = outflows
+            .filter(t => Math.abs(Number(t.value)) >= threshold)
+            .sort((a, b) => Math.abs(Number(b.value)) - Math.abs(Number(a.value)))[0];
+        if (outlier) {
+            alerts.push({
+                type: 'info',
+                title: 'Gasto atipico detectado',
+                body: `${formatDate(new Date(outlier.date))} - ${outlier.description} (R$ ${Math.abs(Number(outlier.value)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
+            });
+        }
+    }
+
+    if (alerts.length === 0) {
+        container.innerHTML = `<div class="alert-empty">Sem alertas relevantes no filtro atual.</div>`;
+        return;
+    }
+
+    container.innerHTML = alerts.map(a => `
+        <div class="alert-card ${a.type}">
+            <div class="alert-title">${a.title}</div>
+            <div class="alert-body">${a.body}</div>
+        </div>
+    `).join('');
 }
 
 function renderStats() {
@@ -657,11 +742,19 @@ function renderTransactionsTable() {
         const key = `${t.date}|${t.description}|${t.value}`;
         const hasOverride = t.manual_override;
         const overrideClass = hasOverride ? 'manual-override' : '';
+        const confidenceLevel = t.confidence_level || 'low';
+        const confidenceSource = t.confidence_source || 'Fallback';
+        const confidenceLabel = confidenceLevel === 'high' ? 'Alta' : confidenceLevel === 'medium' ? 'Media' : 'Baixa';
 
         row.innerHTML = `
             <td>${formatDate(new Date(t.date))}</td>
             <td>${t.description}</td>
             <td class="amount ${amountClass}">${amountText}</td>
+            <td>
+                <span class="confidence-badge confidence-${confidenceLevel}" title="Origem: ${confidenceSource}">
+                    ${confidenceLabel}
+                </span>
+            </td>
             <td class="editable-cell">
                 <span class="category category-${t.category} ${overrideClass}"
                       data-key="${key}" data-field="category" data-value="${t.category}">
@@ -698,8 +791,12 @@ function applyFilters() {
 
     if (currentSort.column) {
         sortTable(currentSort.column, true);
+        renderStats();
+        renderFinancialAlerts();
+        renderCharts();
     } else {
         renderStats();
+        renderFinancialAlerts();
         renderCharts();
         renderTransactionsTable();
     }
@@ -716,6 +813,7 @@ function clearFilters() {
     updateSortIndicators();
     filteredTransactions = [...transactions];
     renderStats();
+    renderFinancialAlerts();
     renderCharts();
     renderTransactionsTable();
     scheduleInsightsRefresh();
@@ -735,6 +833,12 @@ function sortTable(column, preserveDirection = false) {
             case 'date': aV = new Date(a.date); bV = new Date(b.date); break;
             case 'description': aV = a.description.toLowerCase(); bV = b.description.toLowerCase(); break;
             case 'value': aV = Math.abs(a.value); bV = Math.abs(b.value); break;
+            case 'confidence': {
+                const score = { high: 3, medium: 2, low: 1 };
+                aV = score[a.confidence_level || 'low'];
+                bV = score[b.confidence_level || 'low'];
+                break;
+            }
             case 'category': aV = a.category.toLowerCase(); bV = b.category.toLowerCase(); break;
             case 'for': aV = a.for.toLowerCase(); bV = b.for.toLowerCase(); break;
             default: return 0;
@@ -804,9 +908,21 @@ function cancelInlineEdit(element, dropdown) {
 async function saveOverride(key, field, newValue) {
     try {
         const t = filteredTransactions.find(t => `${t.date}|${t.description}|${t.value}` === key);
-        if (t) { t[field] = newValue; t.manual_override = true; }
+        if (t) {
+            t[field] = newValue;
+            t.manual_override = true;
+            t.confidence_level = 'high';
+            t.confidence_source = 'IA/Manual';
+            t.classification_source = 'manual_override';
+        }
         const mt = transactions.find(t => `${t.date}|${t.description}|${t.value}` === key);
-        if (mt) { mt[field] = newValue; mt.manual_override = true; }
+        if (mt) {
+            mt[field] = newValue;
+            mt.manual_override = true;
+            mt.confidence_level = 'high';
+            mt.confidence_source = 'IA/Manual';
+            mt.classification_source = 'manual_override';
+        }
 
         await saveOverridesToFile(key, field, newValue);
         // re-apply filters so any active category/person/year/month selection
