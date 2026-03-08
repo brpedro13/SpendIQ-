@@ -32,7 +32,7 @@ async function loadData() {
         const response = await fetch(`/api/data/merged?t=${Date.now()}`);
         if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
         transactions = await response.json();
-        applyLocalStorageOverrides();
+        await applyOverridesFromServer();
         enrichTransactionConfidence();
         filteredTransactions = [...transactions];
         console.log(`Loaded ${transactions.length} transactions`);
@@ -71,27 +71,39 @@ function enrichTransactionConfidence() {
     });
 }
 
-// Apply overrides from localStorage
-function applyLocalStorageOverrides() {
+// Apply overrides with server as source of truth.
+async function applyOverridesFromServer() {
     try {
-        const storedOverrides = localStorage.getItem('finance_overrides');
-        if (storedOverrides) {
-            const overrides = JSON.parse(storedOverrides);
-            let overrideCount = 0;
-            for (const [key, overrideData] of Object.entries(overrides.overrides || {})) {
-                const transaction = transactions.find(t =>
-                    `${t.date}|${t.description}|${t.value}` === key
-                );
-                if (transaction) {
-                    if (overrideData.category) { transaction.category = overrideData.category; overrideCount++; }
-                    if (overrideData.for) { transaction.for = overrideData.for; overrideCount++; }
-                    transaction.manual_override = true;
-                }
+        let overrides = { description: 'Manual overrides', overrides: {}, version: '1.0' };
+
+        try {
+            const response = await fetch('/api/data/overrides');
+            if (response.ok) {
+                overrides = await response.json();
+                // Keep browser cache aligned with canonical server file.
+                localStorage.setItem('finance_overrides', JSON.stringify(overrides));
+            } else {
+                throw new Error(`HTTP ${response.status}`);
             }
-            if (overrideCount > 0) console.log(`✅ Applied ${overrideCount} overrides from localStorage`);
+        } catch (serverErr) {
+            // Fallback only when server cannot be reached.
+            const storedOverrides = localStorage.getItem('finance_overrides');
+            if (storedOverrides) overrides = JSON.parse(storedOverrides);
+            console.warn('Using local overrides fallback:', serverErr.message);
         }
+
+        let overrideCount = 0;
+        for (const [key, overrideData] of Object.entries(overrides.overrides || {})) {
+            const transaction = transactions.find(t => `${t.date}|${t.description}|${t.value}` === key);
+            if (transaction) {
+                if (overrideData.category) { transaction.category = overrideData.category; overrideCount++; }
+                if (overrideData.for) { transaction.for = overrideData.for; overrideCount++; }
+                transaction.manual_override = true;
+            }
+        }
+        if (overrideCount > 0) console.log(`✅ Applied ${overrideCount} overrides`);
     } catch (error) {
-        console.error('Error applying localStorage overrides:', error);
+        console.error('Error applying overrides:', error);
     }
 }
 

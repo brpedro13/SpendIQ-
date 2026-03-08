@@ -191,6 +191,16 @@ app.get('/api/data/merged', async (req, res) => {
     }
 });
 
+app.get('/api/data/overrides', async (req, res) => {
+    try {
+        const overridesPath = path.join(__dirname, 'data', 'overrides.json');
+        const raw = await fs.readFile(overridesPath, 'utf8');
+        res.json(JSON.parse(raw));
+    } catch {
+        res.json({ description: 'Manual overrides', overrides: {}, version: '1.0' });
+    }
+});
+
 app.post('/api/save-override', async (req, res) => {
     try {
         const { key, field, value } = req.body;
