@@ -372,6 +372,70 @@ function shouldAcceptRuleKeyword(keyword) {
     return true;
 }
 
+const CATEGORY_HINTS = {
+    'alimentação': ['ifood', 'food', 'burger', 'pizza', 'churra', 'restaurante', 'cafe', 'padaria', 'lanch', 'bebida'],
+    'transporte': ['99', 'uber', 'taxi', 'cabify', 'combust', 'posto', 'metro', 'onibus', 'bus'],
+    'assinatura': ['spotify', 'netflix', 'youtube', 'prime', 'google claude', 'apple', 'deezer'],
+    'academia': ['smartfit', 'academia', 'gym', 'fitness'],
+    'compras online': ['mercadolivre', 'mercado livre', 'amazon', 'americanas', 'aliexpress', 'olx', 'magazi', 'boticario']
+};
+
+const GENERIC_REASON_PATTERNS = [/compra online/i, /nome de empresa/i, /servi[cç]os online/i, /nome de restaurante/i];
+
+function normalizeText(text) {
+    return (text || '')
+        .toString()
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '');
+}
+
+function textHasAnyHint(text, hints = []) {
+    const normalized = normalizeText(text);
+    return hints.some((hint) => normalized.includes(normalizeText(hint)));
+}
+
+function isSaneCategoryForText(category, text) {
+    const hints = CATEGORY_HINTS[category];
+    if (!hints) return true;
+    return textHasAnyHint(text, hints);
+}
+
+function shouldTrustAiCategorization(cat, description) {
+    if (!cat || !cat.category) return false;
+    const reason = String(cat.reasoning || '');
+    const saneCategory = isSaneCategoryForText(cat.category, description);
+    const hasGenericReason = GENERIC_REASON_PATTERNS.some((rx) => rx.test(reason));
+
+    if (!saneCategory) return false;
+    if (hasGenericReason && cat.category !== 'compras online') return false;
+    return true;
+}
+
+function findBestRuleMatch(description, rules) {
+    const normalizedDesc = normalizeText(description);
+    let best = null;
+
+    for (const [keyword, value] of Object.entries(rules || {})) {
+        const normalizedKeyword = normalizeText(keyword);
+        if (!normalizedKeyword) continue;
+        if (normalizedDesc.includes(normalizedKeyword)) {
+            if (!best || normalizedKeyword.length > best.keyword.length) {
+                best = { keyword: normalizedKeyword, value };
+            }
+        }
+    }
+
+    return best?.value || null;
+}
+
+function shouldAcceptSuggestedRule(rule) {
+    const normalizedKeyword = normalizeRuleKeyword(rule?.keyword || '');
+    if (!shouldAcceptRuleKeyword(normalizedKeyword)) return false;
+    return isSaneCategoryForText(rule?.category, normalizedKeyword);
+}
+
 // AI auto-categorize (batched)
 app.post('/api/ai/categorize', async (req, res) => {
     try {
@@ -442,8 +506,23 @@ app.post('/api/ai/categorize', async (req, res) => {
 
                 try {
                     const batchResult = JSON.parse(cleanJson);
-                    for (const cat of (batchResult.categorizations || [])) allCategorizations.push(cat);
+                    for (const cat of (batchResult.categorizations || [])) {
+                        const idx = Number(cat.index) - 1;
+                        const txFromBatch = Number.isInteger(idx) ? batch[idx] : null;
+                        const desc = cat.description || txFromBatch?.description || '';
+                        if (!shouldTrustAiCategorization(cat, desc)) {
+                            continue;
+                        }
+                        allCategorizations.push({
+                            ...cat,
+                            description: desc,
+                            confidence: cat.confidence === 'high' ? 'medium' : (cat.confidence || 'medium')
+                        });
+                    }
                     for (const rule of (batchResult.suggested_rules || [])) {
+                        if (!shouldAcceptSuggestedRule(rule)) {
+                            continue;
+                        }
                         const k = rule.keyword.toLowerCase();
                         if (!ruleKeywords.has(k)) { ruleKeywords.add(k); allRules.push(rule); }
                     }
@@ -481,7 +560,20 @@ app.post('/api/ai/categorize', async (req, res) => {
             descToCat.set(cat.description.toLowerCase().trim(), cat);
         }
 
+        const deterministicRules = { ...currentRules, ...SAFE_BASELINE_RULES };
         const expandedCategorizations = transactions.map((t, i) => {
+            const deterministic = findBestRuleMatch(t.description, deterministicRules);
+            if (deterministic) {
+                return {
+                    index: i + 1,
+                    description: t.description,
+                    category: deterministic.category,
+                    for: deterministic.for || 'pedro',
+                    confidence: 'medium',
+                    reasoning: 'regra determinística'
+                };
+            }
+
             const match = descToCat.get(t.description.toLowerCase().trim());
             if (match) return { ...match, index: i + 1, description: t.description };
             const fallback = inferFallbackCategorization(t);
