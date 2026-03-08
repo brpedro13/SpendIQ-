@@ -45,15 +45,28 @@ async function loadData() {
 function enrichTransactionConfidence() {
     transactions = transactions.map((t) => {
         const source = (t.classification_source || '').toLowerCase();
+
+        // Respect explicit confidence from backend/parser when available.
+        if (t.confidence === 'high' || t.confidence === 'medium' || t.confidence === 'low') {
+            const fromAi = t.confidence === 'high' ? 'IA/Manual' : t.confidence === 'medium' ? 'Regra' : 'Fallback';
+            return { ...t, confidence_level: t.confidence, confidence_source: fromAi };
+        }
+
         if (t.manual_override || source === 'manual_override') {
             return { ...t, confidence_level: 'high', confidence_source: 'IA/Manual' };
         }
         if (source === 'rule') {
             return { ...t, confidence_level: 'medium', confidence_source: 'Regra' };
         }
-        if (source === 'fallback' || t.category === 'uncategorized' || t.for === 'unknown') {
+        if (t.category === 'uncategorized' || t.for === 'unknown') {
             return { ...t, confidence_level: 'low', confidence_source: 'Fallback' };
         }
+
+        // Fallback can still be acceptable if category/person are concrete.
+        if (source === 'fallback') {
+            return { ...t, confidence_level: 'medium', confidence_source: 'Fallback' };
+        }
+
         return { ...t, confidence_level: 'medium', confidence_source: 'Regra' };
     });
 }
