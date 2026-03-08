@@ -172,8 +172,8 @@ function buildPrompt(transactionList, existingCategories, existingFor, ignorePat
 
 CONTEXTO DO USUÁRIO:
 - Este é um casal (Pedro e Ana Luiza) que divide despesas
-- O campo "for" indica pra quem é o gasto: "ambos" (padrão), "pedro", "ana luiza"
-- NA DÚVIDA, use "for": "ambos"
+- O campo "for" indica pra quem é o gasto: "pedro" (padrão), "ambos", "ana luiza"
+- NA DÚVIDA, use "for": "pedro"
 
 CATEGORIAS JÁ EXISTENTES: ${existingCategories.length > 0 ? existingCategories.join(', ') : 'nenhuma'}
 VALORES "FOR" JÁ EXISTENTES: ${existingFor.length > 0 ? existingFor.join(', ') : 'nenhum'}

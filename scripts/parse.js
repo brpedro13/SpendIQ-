@@ -41,12 +41,12 @@ const getField = (row, keys) => {
 };
 
 const applyRules = (description, rules) => {
-  if (!description) return { category: "uncategorized", for: "unknown" };
+  if (!description) return { category: "uncategorized", for: "pedro" };
   const lowerDesc = description.toLowerCase();
   for (const [keyword, rule] of Object.entries(rules)) {
     if (lowerDesc.includes(keyword.toLowerCase())) return rule;
   }
-  return { category: "uncategorized", for: "unknown" };
+  return { category: "uncategorized", for: "pedro" };
 };
 
 const shouldIgnoreTransaction = (transaction, ignoreConfig) => {
