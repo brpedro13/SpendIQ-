@@ -1,0 +1,29 @@
+{
+  "name": "personal-finance-tracker",
+  "version": "2.0.0",
+  "description": "A lightweight, privacy-first expense tracker with AI categorization and Gmail auto-import",
+  "main": "server.js",
+  "scripts": {
+    "parse": "node scripts/parse.js",
+    "serve": "node -e \"require('fs').copyFileSync('data/merged.json','dashboard/data/merged.json')\" && node server.js",
+    "start": "npm run serve",
+    "dev": "npm run parse && npm run serve",
+    "gmail:auth": "node scripts/gmail-auth.js",
+    "gmail:sync": "node scripts/gmail-sync.js",
+    "sync": "node scripts/gmail-sync.js && npm run parse",
+    "clean": "node -e \"const fs=require('fs'); try{fs.unlinkSync('data/merged.json')}catch{}; try{fs.unlinkSync('dashboard/data/merged.json')}catch{}\"",
+    "reset": "npm run clean && npm run parse",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["finance", "expense-tracker", "budget", "nubank", "open-finance"],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "dependencies": {
+    "papaparse": "^5.4.1",
+    "dayjs": "^1.11.10",
+    "chart.js": "^4.5.0",
+    "express": "^4.18.2",
+    "googleapis": "^144.0.0"
+  }
+}

@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Personal Finance Tracker</title>
+    <link rel="stylesheet" href="style.css?v=2.0">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🧮 Personal Finance Tracker</h1>
+            <p>A lightweight, privacy-first expense tracker for family expenses</p>
+        </header>
+
+        <!-- AI Categorization Panel -->
+        <div class="ai-panel" id="aiPanel">
+            <div class="ai-panel-header">
+                <div class="ai-title">
+                    <span class="ai-icon">🤖</span>
+                    <h3>AI Auto-Categorização</h3>
+                    <span class="ai-badge" id="aiBadge">0 sem categoria</span>
+                </div>
+                <div class="ai-actions">
+                    <button id="gmailSync" class="ai-btn ai-btn-sync" disabled>
+                        <span class="ai-btn-icon">📬</span> Sync Gmail
+                    </button>
+                    <button id="aiCategorize" class="ai-btn" disabled>
+                        <span class="ai-btn-icon">⚡</span> Categorizar com IA
+                    </button>
+                </div>
+            </div>
+            <div class="ai-status" id="aiStatus"></div>
+            <div class="ai-results" id="aiResults" style="display:none;">
+                <div class="ai-results-header">
+                    <h4>Resultados da IA</h4>
+                    <div class="ai-results-actions">
+                        <button id="aiApplyAll" class="ai-btn ai-btn-success">✅ Aplicar Tudo</button>
+                        <button id="aiApplyRules" class="ai-btn ai-btn-rules">📝 Salvar Regras</button>
+                        <button id="aiDismiss" class="ai-btn ai-btn-dismiss">✕ Fechar</button>
+                    </div>
+                </div>
+                <div class="ai-results-body" id="aiResultsBody"></div>
+            </div>
+        </div>
+
+        <!-- Executive Summary (Insights) -->
+        <div class="insights-section executive-summary">
+            <div class="insights-header">
+                <span class="insights-icon">💡</span>
+                <span class="insights-title">Resumo Executivo da IA</span>
+                <button id="refreshInsights">Atualizar Insights</button>
+            </div>
+            <div class="insights-body" id="insightsBody">
+                <div class="insights-loading" id="insightsLoading" style="display:none;">Analisando gastos com IA...</div>
+                <div class="insights-content" id="insightsContent"></div>
+            </div>
+        </div>
+
+        <div class="filters-section">
+            <h3>Filters</h3>
+            <div class="filters">
+                <select id="categoryFilter">
+                    <option value="">All Categories</option>
+                </select>
+                <select id="personFilter">
+                    <option value="">All People</option>
+                </select>
+                <select id="yearFilter">
+                    <option value="">All Years</option>
+                </select>
+                <select id="monthFilter">
+                    <option value="">All Months</option>
+                </select>
+                <button id="clearFilters">Clear Filters</button>
+            </div>
+        </div>
+
+        <div class="stats-grid">
+            <div class="stat-card">
+                <h3>Total Transactions</h3>
+                <div class="stat-value" id="totalTransactions">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Total Spent</h3>
+                <div class="stat-value" id="totalSpent">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Average per Transaction</h3>
+                <div class="stat-value" id="averageTransaction">-</div>
+            </div>
+            <div class="stat-card">
+                <h3>Date Range</h3>
+                <div class="stat-value" id="dateRange">-</div>
+            </div>
+        </div>
+
+        <div class="charts-grid">
+            <div class="chart-container">
+                <h3>Spending by Category</h3>
+                <canvas id="categoryChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <h3>Spending by Person</h3>
+                <canvas id="personChart"></canvas>
+            </div>
+            <div class="chart-container full-width">
+                <h3>Monthly Spending Trend</h3>
+                <canvas id="monthlyChart"></canvas>
+            </div>
+        </div>
+
+        <div class="transactions-section">
+            <div class="transactions-header">
+                <h3>Recent Transactions</h3>
+                <button id="exportOverrides">Export Overrides</button>
+            </div>
+            <div class="transactions-table-container">
+                <table class="transactions-table">
+                    <thead>
+                        <tr>
+                            <th class="sortable" data-column="date">Date <span class="sort-indicator">↕</span></th>
+                            <th class="sortable" data-column="description">Description <span class="sort-indicator">↕</span></th>
+                            <th class="sortable" data-column="value">Amount <span class="sort-indicator">↕</span></th>
+                            <th class="sortable" data-column="category">Category <span class="sort-indicator">↕</span></th>
+                            <th class="sortable" data-column="for">For <span class="sort-indicator">↕</span></th>
+                        </tr>
+                    </thead>
+                    <tbody id="transactionsTableBody">
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Insights Tab -->
+        <div class="insights-section">
+            <div class="insights-header">
+                <h3>💡 Insights da IA</h3>
+                <button id="refreshInsights">Atualizar Insights</button>
+            </div>
+            <div class="insights-body" id="insightsBody">
+                <div class="insights-loading" id="insightsLoading" style="display:none;">Analisando gastos com IA...</div>
+                <div class="insights-content" id="insightsContent"></div>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js?v=2.0"></script>
+</body>
+</html>

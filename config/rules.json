@@ -1,0 +1,170 @@
+{
+  "99food": {
+    "category": "delivery",
+    "for": "ambos"
+  },
+  "ifd": {
+    "category": "delivery",
+    "for": "ambos"
+  },
+  "ifood": {
+    "category": "delivery",
+    "for": "ambos"
+  },
+  "99 - nupay": {
+    "category": "transporte",
+    "for": "ambos"
+  },
+  "nupay - 99": {
+    "category": "transporte",
+    "for": "ambos"
+  },
+  "uber": {
+    "category": "transporte",
+    "for": "ambos"
+  },
+  "burger king": {
+    "category": "fast food",
+    "for": "ambos"
+  },
+  "companhiadochurra": {
+    "category": "restaurante",
+    "for": "ambos"
+  },
+  "princesa leblon": {
+    "category": "restaurante",
+    "for": "ambos"
+  },
+  "cafe 18 do forte": {
+    "category": "restaurante",
+    "for": "ambos"
+  },
+  "dani 2001": {
+    "category": "restaurante",
+    "for": "ambos"
+  },
+  "big polis": {
+    "category": "restaurante",
+    "for": "ambos"
+  },
+  "jacksonpqueij": {
+    "category": "alimentação",
+    "for": "ambos"
+  },
+  "carioca bebidas": {
+    "category": "alimentação",
+    "for": "ambos"
+  },
+  "nycc": {
+    "category": "cinema",
+    "for": "ambos"
+  },
+  "drogasmil": {
+    "category": "farmácia",
+    "for": "ambos"
+  },
+  "droga": {
+    "category": "farmácia",
+    "for": "ambos"
+  },
+  "farmacia": {
+    "category": "farmácia",
+    "for": "ambos"
+  },
+  "mercadolivre": {
+    "category": "compras online",
+    "for": "ambos"
+  },
+  "mercado*mercadolivre": {
+    "category": "compras online",
+    "for": "ambos"
+  },
+  "americanas": {
+    "category": "compras online",
+    "for": "ambos"
+  },
+  "amazon": {
+    "category": "compras online",
+    "for": "ambos"
+  },
+  "alipay": {
+    "category": "compras online",
+    "for": "ambos"
+  },
+  "zp*olx": {
+    "category": "compras online",
+    "for": "ambos"
+  },
+  "boticario": {
+    "category": "compras online",
+    "for": "ambos"
+  },
+  "farm ecommerce": {
+    "category": "roupa",
+    "for": "ambos"
+  },
+  "smartfit": {
+    "category": "academia",
+    "for": "pedro"
+  },
+  "fitnessnation": {
+    "category": "academia",
+    "for": "pedro"
+  },
+  "spotify": {
+    "category": "assinatura",
+    "for": "ambos"
+  },
+  "netflix": {
+    "category": "assinatura",
+    "for": "ambos"
+  },
+  "google claude": {
+    "category": "assinatura",
+    "for": "pedro"
+  },
+  "disney": {
+    "category": "assinatura",
+    "for": "ambos"
+  },
+  "hbo": {
+    "category": "assinatura",
+    "for": "ambos"
+  },
+  "prime video": {
+    "category": "assinatura",
+    "for": "ambos"
+  },
+  "porto seguro": {
+    "category": "seguro",
+    "for": "ambos"
+  },
+  "bondinho": {
+    "category": "lazer",
+    "for": "ambos"
+  },
+  "jacarepagua": {
+    "category": "lazer",
+    "for": "ambos"
+  },
+  "inaldofonsecade": {
+    "category": "parcela pessoal",
+    "for": "pedro"
+  },
+  "ana luiza": {
+    "category": "transferência",
+    "for": "ana luiza"
+  },
+  "99 food": {
+    "category": "delivery",
+    "for": "ambos"
+  },
+  "moda mundial": {
+    "category": "compras online",
+    "for": "ambos"
+  },
+  "armazem": {
+    "category": "alimentação",
+    "for": "ambos"
+  }
+}
