@@ -6,7 +6,8 @@
   "scripts": {
     "parse": "node scripts/parse.js",
     "serve": "node -e \"require('fs').copyFileSync('data/merged.json','dashboard/data/merged.json')\" && node server.js",
-    "start": "npm run serve",
+    "build": "npm run parse",
+    "start": "npm run build && npm run serve",
     "dev": "npm run parse && npm run serve",
     "gmail:auth": "node scripts/gmail-auth.js",
     "gmail:sync": "node scripts/gmail-sync.js",
