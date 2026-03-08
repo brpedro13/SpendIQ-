@@ -188,7 +188,66 @@ const deduplicateTransactions = (transactions) => {
     }
   }
 
-  return withStrongDedup.filter((_, idx) => !toRemove.has(idx));
+  const withoutCrossSourceDupes = withStrongDedup.filter((_, idx) => !toRemove.has(idx));
+
+  // 3) Resolve mirrored +/- pairs for the same logical transaction.
+  // Choose the sign by description semantics and source priority.
+  const mirrors = new Map();
+  withoutCrossSourceDupes.forEach((t, index) => {
+    const normDesc = normalizeForDedup(t.description);
+    const absValue = Math.abs(Number(t.value || 0)).toFixed(2);
+    const key = `${t.date}|${normDesc}|${absValue}`;
+    if (!mirrors.has(key)) mirrors.set(key, []);
+    mirrors.get(key).push({ t, index, normDesc });
+  });
+
+  const scoreSource = (source) => {
+    if (!source) return 0;
+    if (source.includes('_ofx')) return 3;
+    if (source.includes('_debit_csv')) return 2;
+    if (source.includes('_card_csv')) return 1;
+    return 0;
+  };
+
+  const choosePreferredSign = (normDesc) => {
+    const inflowHints = [
+      'recebida', 'recebido', 'reembolso', 'cashback', 'estorno', 'devolucao', 'devolução'
+    ];
+    const outflowHints = [
+      'enviada', 'enviado', 'compra', 'debito', 'débito', 'nupay', 'parcela', 'pagamento de boleto'
+    ];
+    if (inflowHints.some((k) => normDesc.includes(k))) return 1;
+    if (outflowHints.some((k) => normDesc.includes(k))) return -1;
+    return null;
+  };
+
+  const mirrorRemove = new Set();
+  for (const group of mirrors.values()) {
+    const pos = group.filter((x) => Number(x.t.value) > 0);
+    const neg = group.filter((x) => Number(x.t.value) < 0);
+    if (pos.length === 0 || neg.length === 0) continue;
+
+    const preferredSign = choosePreferredSign(group[0].normDesc);
+    if (preferredSign === 1) {
+      for (const x of neg) mirrorRemove.add(x.index);
+      continue;
+    }
+    if (preferredSign === -1) {
+      for (const x of pos) mirrorRemove.add(x.index);
+      continue;
+    }
+
+    // Unknown semantics: keep entries with highest source confidence.
+    const sorted = group
+      .slice()
+      .sort((a, b) => scoreSource(b.t.source) - scoreSource(a.t.source));
+    const keeper = sorted[0];
+    for (const x of group) {
+      if (x.index !== keeper.index) mirrorRemove.add(x.index);
+    }
+  }
+
+  return withoutCrossSourceDupes.filter((_, idx) => !mirrorRemove.has(idx));
 };
 
 /**
