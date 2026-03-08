@@ -1,3 +1,10 @@
+// Remove aspas de variáveis de ambiente
+function cleanEnv(val) {
+    if (typeof val === 'string') {
+        return val.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+    }
+    return val;
+}
 import express from 'express';
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -36,21 +43,25 @@ async function loadEnv() {
 
 async function getAiConfig() {
     const env = await loadEnv();
-    const provider = (env.AI_PROVIDER || 'groq').toLowerCase();
+    // Use variáveis do Railway se existirem, limpando aspas
+    const AI_PROVIDER = cleanEnv(process.env.AI_PROVIDER || env.AI_PROVIDER || 'groq');
+    const AI_MODEL = cleanEnv(process.env.AI_MODEL || env.AI_MODEL || 'llama-3.3-70b-versatile');
+    const GROQ_API_KEY = cleanEnv(process.env.GROQ_API_KEY || env.GROQ_API_KEY || null);
+    const ANTHROPIC_API_KEY = cleanEnv(process.env.ANTHROPIC_API_KEY || env.ANTHROPIC_API_KEY || null);
 
-    if (provider === 'anthropic') {
+    if (AI_PROVIDER.toLowerCase() === 'anthropic') {
         return {
             provider: 'anthropic',
-            apiKey: env.ANTHROPIC_API_KEY || null,
-            model: env.AI_MODEL || 'claude-sonnet-4-20250514',
+            apiKey: ANTHROPIC_API_KEY,
+            model: AI_MODEL || 'claude-sonnet-4-20250514',
             baseUrl: 'https://api.anthropic.com/v1/messages',
         };
     }
 
     return {
         provider: 'groq',
-        apiKey: env.GROQ_API_KEY || null,
-        model: env.AI_MODEL || 'llama-3.3-70b-versatile',
+        apiKey: GROQ_API_KEY,
+        model: AI_MODEL,
         baseUrl: 'https://api.groq.com/openai/v1/chat/completions',
     };
 }
