@@ -213,6 +213,34 @@ REGRAS:
 - Transações que NÃO são gastos reais → coloque em suggested_ignores, NÃO em categorizations`;
 }
 
+function inferFallbackCategorization(transaction) {
+    const description = (transaction?.description || '').toLowerCase();
+
+    let forWhom = 'pedro';
+    if (description.includes('ana luiza gonçalves sousa')) {
+        forWhom = 'ana luiza';
+    } else if (description.includes('pedro brasil alves lopes')) {
+        forWhom = 'pedro';
+    }
+
+    let category = 'uncategorized';
+    if (
+        description.includes('transferência') ||
+        description.includes('transferencia') ||
+        description.includes('pix') ||
+        description.includes('reembolso recebido')
+    ) {
+        category = 'transferencia';
+    }
+
+    return {
+        category,
+        for: forWhom,
+        confidence: 'medium',
+        reasoning: 'fallback por descrição'
+    };
+}
+
 // AI auto-categorize (batched)
 app.post('/api/ai/categorize', async (req, res) => {
     try {
@@ -305,7 +333,15 @@ app.post('/api/ai/categorize', async (req, res) => {
         const expandedCategorizations = transactions.map((t, i) => {
             const match = descToCat.get(t.description.toLowerCase().trim());
             if (match) return { ...match, index: i + 1, description: t.description };
-            return { index: i + 1, description: t.description, category: 'uncategorized', for: 'unknown', confidence: 'low', reasoning: 'sem match' };
+            const fallback = inferFallbackCategorization(t);
+            return {
+                index: i + 1,
+                description: t.description,
+                category: fallback.category,
+                for: fallback.for,
+                confidence: fallback.confidence,
+                reasoning: fallback.reasoning
+            };
         });
 
         const result = { categorizations: expandedCategorizations, suggested_rules: allRules, suggested_ignores: allIgnores };

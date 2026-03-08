@@ -49,6 +49,29 @@ const applyRules = (description, rules) => {
   return { category: "uncategorized", for: "pedro" };
 };
 
+const inferFallbackClassification = (description) => {
+  const lowerDesc = (description || "").toLowerCase();
+
+  let forWhom = "pedro";
+  if (lowerDesc.includes("ana luiza gonçalves sousa")) {
+    forWhom = "ana luiza";
+  } else if (lowerDesc.includes("pedro brasil alves lopes")) {
+    forWhom = "pedro";
+  }
+
+  let category = "uncategorized";
+  if (
+    lowerDesc.includes("transferência") ||
+    lowerDesc.includes("transferencia") ||
+    lowerDesc.includes("pix") ||
+    lowerDesc.includes("reembolso recebido")
+  ) {
+    category = "transferencia";
+  }
+
+  return { category, for: forWhom };
+};
+
 const shouldIgnoreTransaction = (transaction, ignoreConfig) => {
   if (!ignoreConfig || !ignoreConfig.rules) return false;
   const description = transaction.description || "";
@@ -102,7 +125,12 @@ const processNubankCsv = (rows, rules) => {
     const title = getField(row, ["title", "Título", "descricao", "Descrição", "description"]);
     const amount = getField(row, ["amount", "valor", "Valor"]);
     const date = getField(row, ["date", "data", "Data"]);
-    const { category, for: forWhom } = applyRules(title, rules);
+    let { category, for: forWhom } = applyRules(title, rules);
+    if (category === "uncategorized") {
+      const inferred = inferFallbackClassification(title);
+      category = inferred.category;
+      forWhom = inferred.for;
+    }
     const rawValue = normalizeAmount(amount);
     return {
       date: normalizeDate(date),
@@ -119,7 +147,12 @@ const processNubankDebitCsv = (rows, rules) => {
     const date = getField(row, ["Data", "data", "date"]);
     const value = getField(row, ["Valor", "valor", "amount"]);
     const transactionId = getField(row, ["Identificador", "identifier", "transaction_id", "id"]);
-    const { category, for: forWhom } = applyRules(description, rules);
+    let { category, for: forWhom } = applyRules(description, rules);
+    if (category === "uncategorized") {
+      const inferred = inferFallbackClassification(description);
+      category = inferred.category;
+      forWhom = inferred.for;
+    }
     return {
       date: normalizeDate(date),
       description: description?.trim() || "",
