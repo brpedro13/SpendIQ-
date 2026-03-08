@@ -290,21 +290,46 @@ async function runAiCategorization() {
 
     btn.disabled = true;
     btn.innerHTML = '<span class="ai-spinner"></span> Analisando...';
-    setAiStatus(`🤖 Enviando ${uncategorized.length} transações para o Claude...`, 'loading');
+    setAiStatus(`🤖 Enviando ${uncategorized.length} transações para o modelo de alta qualidade...`, 'loading');
 
-    try {
+    const requestCategorization = async (useFallback = false) => {
         const response = await fetch('/api/ai/categorize', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ transactions: uncategorized })
+            body: JSON.stringify({ transactions: uncategorized, useFallback })
         });
 
-        if (!response.ok) {
-            const err = await response.json();
-            throw new Error(err.error || `HTTP ${response.status}`);
+        const payload = await response.json().catch(() => ({}));
+        return { response, payload };
+    };
+
+    try {
+        let { response, payload } = await requestCategorization(false);
+
+        if (response.status === 429 && payload?.requiresFallbackConfirmation) {
+            const waitText = payload.retryAfter ? `${payload.retryAfter}` : 'alguns minutos';
+            setAiStatus(`⏳ Qualidade alta indisponível agora. Aguarde ${waitText} para usar o modelo mais inteligente.`, 'warn');
+
+            const shouldFallback = window.confirm(
+                `Modelo premium indisponível agora.\n\n` +
+                `Para qualidade alta, aguarde ${waitText}.\n` +
+                `Deseja continuar agora com fallback (qualidade menor)?`
+            );
+
+            if (!shouldFallback) {
+                setAiStatus(`⏳ Perfeito. Aguarde ${waitText} e tente novamente para qualidade alta.`, 'info');
+                return;
+            }
+
+            setAiStatus('⚠️ Rodando fallback por sua confirmação (qualidade menor).', 'warn');
+            ({ response, payload } = await requestCategorization(true));
         }
 
-        aiResults = await response.json();
+        if (!response.ok) {
+            throw new Error(payload.error || `HTTP ${response.status}`);
+        }
+
+        aiResults = payload;
         aiResults._transactionKeys = uncategorized.map(t => `${t.date}|${t.description}|${t.value}`);
         aiResults._transactions = uncategorized;
 

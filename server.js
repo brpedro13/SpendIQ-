@@ -70,7 +70,8 @@ async function getAiConfig() {
 // CALL AI
 // ============================================================
 
-async function callAi(prompt, config) {
+async function callAi(prompt, config, options = {}) {
+    const allowFallback = options.allowFallback !== false;
     if (config.provider === 'anthropic') {
         const response = await fetch(config.baseUrl, {
             method: 'POST',
@@ -94,11 +95,12 @@ async function callAi(prompt, config) {
         .split(',')
         .map((m) => m.trim())
         .filter(Boolean);
-    const groqModelsToTry = [
-        config.model,
-        ...groqFallbackFromEnv,
-        'llama-3.1-8b-instant'
-    ].filter(Boolean).filter((v, i, arr) => arr.indexOf(v) === i);
+    const primaryModel = config.model;
+    const fallbackModels = [...groqFallbackFromEnv, 'llama-3.1-8b-instant']
+        .filter(Boolean)
+        .filter((v, i, arr) => arr.indexOf(v) === i)
+        .filter((m) => m !== primaryModel);
+    const groqModelsToTry = allowFallback ? [primaryModel, ...fallbackModels] : [primaryModel];
 
     const callGroqModel = async (model) => {
         const response = await fetch(config.baseUrl, {
@@ -153,7 +155,15 @@ async function callAi(prompt, config) {
     }
 
     const retryMatch = String(lastErr?.rawText || lastErr?.message || '').match(/Please try again in\s*([^".,}]+)/i);
-    const retryHint = retryMatch ? ` Tente novamente em ${retryMatch[1]}.` : '';
+    const retryText = retryMatch ? retryMatch[1] : null;
+    const isRateLimit = Number(lastErr?.status) === 429 || /rate[_\s-]?limit/i.test(String(lastErr?.rawText || lastErr?.message || ''));
+    if (!allowFallback && isRateLimit) {
+        const err = new Error(`Modelo premium indisponível por limite diário.${retryText ? ` Aguarde ${retryText} para qualidade alta.` : ''}`);
+        err.code = 'PRIMARY_RATE_LIMIT';
+        err.retryAfter = retryText;
+        throw err;
+    }
+    const retryHint = retryText ? ` Tente novamente em ${retryText}.` : '';
     throw new Error(`Limite diário da IA atingido no Groq.${retryHint} A categorização automática parcial será usada.`);
 }
 
@@ -328,10 +338,11 @@ app.post('/api/ai/categorize', async (req, res) => {
             });
         }
 
-        const { transactions } = req.body;
+        const { transactions, useFallback } = req.body;
         if (!transactions || transactions.length === 0) {
             return res.status(400).json({ error: 'Nenhuma transação para categorizar.' });
         }
+        const allowFallback = !!useFallback;
 
         // Load rules and ignore config for context
         const rulesContent = await fs.readFile(path.join(__dirname, 'config', 'rules.json'), 'utf8');
@@ -380,7 +391,7 @@ app.post('/api/ai/categorize', async (req, res) => {
             console.log(`  📦 Lote ${b + 1}/${batches.length} (${batch.length} transações)...`);
 
             try {
-                const responseText = await callAi(prompt, config);
+                const responseText = await callAi(prompt, config, { allowFallback });
                 const cleanJson = responseText.replace(/```json\s*/g, '').replace(/```\s*/g, '').trim();
 
                 try {
@@ -398,6 +409,14 @@ app.post('/api/ai/categorize', async (req, res) => {
                     console.error(`  ❌ Erro lote ${b + 1}:`, parseErr.message);
                 }
             } catch (batchErr) {
+                if (!allowFallback && batchErr?.code === 'PRIMARY_RATE_LIMIT') {
+                    return res.status(429).json({
+                        error: batchErr.message,
+                        requiresFallbackConfirmation: true,
+                        retryAfter: batchErr.retryAfter || null,
+                        canUseFallback: true
+                    });
+                }
                 const isRateLimit = /limite diário|rate[_\s-]?limit|429/i.test(String(batchErr.message || ''));
                 if (isRateLimit) {
                     rateLimitWarning = batchErr.message;
