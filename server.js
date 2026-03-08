@@ -213,6 +213,7 @@ app.post('/api/save-override', async (req, res) => {
 
         if (!overrides.overrides[key]) overrides.overrides[key] = {};
         overrides.overrides[key][field] = value;
+        overrides.overrides[key]._source = 'manual';
         await fs.writeFile(overridesPath, JSON.stringify(overrides, null, 2));
         res.json({ success: true });
     } catch (error) {
@@ -586,7 +587,7 @@ app.post('/api/ai/apply-categorizations', async (req, res) => {
             const cat = categorizations[i];
             const key = transactionKeys[i];
             if (key && cat.category !== 'uncategorized') {
-                overrides.overrides[key] = { category: cat.category, for: cat.for };
+                overrides.overrides[key] = { category: cat.category, for: cat.for, _source: 'ai' };
                 applied++;
             }
         }

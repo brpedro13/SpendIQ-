@@ -55,6 +55,9 @@ function enrichTransactionConfidence() {
         if (t.manual_override || source === 'manual_override') {
             return { ...t, confidence_level: 'high', confidence_source: 'IA/Manual' };
         }
+        if (source === 'ai_applied') {
+            return { ...t, confidence_level: 'medium', confidence_source: 'IA aplicada' };
+        }
         if (source === 'rule') {
             return { ...t, confidence_level: 'medium', confidence_source: 'Regra' };
         }
@@ -86,10 +89,8 @@ async function applyOverridesFromServer() {
                 throw new Error(`HTTP ${response.status}`);
             }
         } catch (serverErr) {
-            // Fallback only when server cannot be reached.
-            const storedOverrides = localStorage.getItem('finance_overrides');
-            if (storedOverrides) overrides = JSON.parse(storedOverrides);
-            console.warn('Using local overrides fallback:', serverErr.message);
+            // Avoid reviving stale local overrides when server is unavailable.
+            console.warn('Skipping local override fallback:', serverErr.message);
         }
 
         let overrideCount = 0;
@@ -98,7 +99,9 @@ async function applyOverridesFromServer() {
             if (transaction) {
                 if (overrideData.category) { transaction.category = overrideData.category; overrideCount++; }
                 if (overrideData.for) { transaction.for = overrideData.for; overrideCount++; }
-                transaction.manual_override = true;
+                const isManual = (overrideData._source || 'manual') !== 'ai';
+                transaction.manual_override = isManual;
+                transaction.classification_source = isManual ? 'manual_override' : 'ai_applied';
             }
         }
         if (overrideCount > 0) console.log(`✅ Applied ${overrideCount} overrides`);
@@ -454,31 +457,22 @@ async function applyAllAiResults() {
         const result = await response.json();
         if (!result.success) throw new Error('Falha ao aplicar');
 
-        // Also save to localStorage for immediate effect
-        let overrides = { description: "Manual overrides", overrides: {}, version: "1.0" };
-        try {
-            const stored = localStorage.getItem('finance_overrides');
-            if (stored) overrides = JSON.parse(stored);
-        } catch {}
-
         for (let i = 0; i < aiResults.categorizations.length; i++) {
             const cat = aiResults.categorizations[i];
             const key = aiResults._transactionKeys[i];
             if (key && cat.category !== 'uncategorized') {
-                overrides.overrides[key] = { category: cat.category, for: cat.for };
                 // Update in-memory transactions
                 const t = transactions.find(t => `${t.date}|${t.description}|${t.value}` === key);
                 if (t) {
                     t.category = cat.category;
                     t.for = cat.for;
-                    t.manual_override = true;
-                    t.classification_source = 'manual_override';
-                    t.confidence_level = 'high';
-                    t.confidence_source = 'IA/Manual';
+                    t.manual_override = false;
+                    t.classification_source = 'ai_applied';
+                    t.confidence_level = 'medium';
+                    t.confidence_source = 'IA aplicada';
                 }
             }
         }
-        localStorage.setItem('finance_overrides', JSON.stringify(overrides));
 
         showToast(`✅ ${result.applied} categorizações aplicadas!`, 'success');
 

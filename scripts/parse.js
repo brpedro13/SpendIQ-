@@ -143,13 +143,15 @@ const applyOverrides = (transactions, overrides) => {
   const updated = transactions.map(t => {
     const key = `${t.date}|${t.description}|${t.value}`;
     if (overrides.overrides[key]) {
+      const overrideData = overrides.overrides[key];
+      const isManual = (overrideData._source || "manual") !== "ai";
       count++;
       return {
         ...t,
-        category: overrides.overrides[key].category || t.category,
-        for: overrides.overrides[key].for || t.for,
-        manual_override: true,
-        classification_source: "manual_override"
+        category: overrideData.category || t.category,
+        for: overrideData.for || t.for,
+        manual_override: isManual,
+        classification_source: isManual ? "manual_override" : "ai_applied"
       };
     }
     return t;
