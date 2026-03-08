@@ -108,7 +108,7 @@ const processNubankCsv = (rows, rules) => {
       date: normalizeDate(date),
       description: title?.trim() || "",
       value: rawValue * -1,
-      category, for: forWhom, source: "nubank"
+      category, for: forWhom, source: "nubank_card_csv"
     };
   });
 };
@@ -118,12 +118,14 @@ const processNubankDebitCsv = (rows, rules) => {
     const description = getField(row, ["Descrição", "Descricao", "descricao", "title", "description"]);
     const date = getField(row, ["Data", "data", "date"]);
     const value = getField(row, ["Valor", "valor", "amount"]);
+    const transactionId = getField(row, ["Identificador", "identifier", "transaction_id", "id"]);
     const { category, for: forWhom } = applyRules(description, rules);
     return {
       date: normalizeDate(date),
       description: description?.trim() || "",
       value: normalizeAmount(value),
-      category, for: forWhom, source: "nubank_debit"
+      transactionId: transactionId?.trim() || undefined,
+      category, for: forWhom, source: "nubank_debit_csv"
     };
   });
 };
@@ -148,56 +150,45 @@ const normalizeForDedup = (desc) => {
   return d.trim();
 };
 
-// Deduplicate transactions by a combination of description+value and
-// optionally fitId.  We avoid using fitId alone because CSV+OFX sources
-// often generate distinct ids for the same logical entry, which was the
-// reason a couple of duplicated PIX transfers were slipping through.
+// Deduplicate with conservative rules to avoid deleting legitimate repeated
+// charges while still removing known CSV+OFX duplicates.
 const deduplicateTransactions = (transactions) => {
-  const seenDesc = new Set();
-  const seenFitId = new Set();
-  return transactions.filter(t => {
+  // 1) Remove exact duplicates only when a stable transaction id exists.
+  const seenStrong = new Set();
+  const withStrongDedup = transactions.filter(t => {
+    const txId = t.transactionId || t.fitId;
+    if (!txId) return true;
     const normDesc = normalizeForDedup(t.description);
     const normValue = Number(t.value).toFixed(2);
-    const keyDesc = `${t.date}|${normDesc}|${normValue}`;
-    if (seenDesc.has(keyDesc)) return false;
-    seenDesc.add(keyDesc);
-    if (t.fitId) {
-      if (seenFitId.has(t.fitId)) return false;
-      seenFitId.add(t.fitId);
-    }
+    const key = `${txId}|${t.date}|${normDesc}|${normValue}`;
+    if (seenStrong.has(key)) return false;
+    seenStrong.add(key);
     return true;
   });
-};
 
-// Remove mirrored pairs where the same transaction appears once positive and
-// once negative (same day, normalized description, same absolute amount).
-// In those pairs, we keep the negative entries because this project tracks
-// spending and these mirrors are usually export artifacts.
-const removeMirroredSignPairs = (transactions) => {
+  // 2) For same logical key coming from both CSV and OFX, prefer CSV.
   const groups = new Map();
-
-  transactions.forEach((t, index) => {
-    const absValue = Number.parseFloat(Math.abs(Number(t.value || 0)).toFixed(2));
-    if (!Number.isFinite(absValue) || absValue === 0) return;
-    const key = `${t.date}|${normalizeForDedup(t.description)}|${absValue.toFixed(2)}`;
-    if (!groups.has(key)) groups.set(key, { positives: [], negatives: [] });
-    if (Number(t.value) > 0) groups.get(key).positives.push(index);
-    if (Number(t.value) < 0) groups.get(key).negatives.push(index);
+  withStrongDedup.forEach((t, index) => {
+    const txId = t.transactionId || t.fitId || '';
+    const normDesc = normalizeForDedup(t.description);
+    const absValue = Math.abs(Number(t.value || 0)).toFixed(2);
+    const groupKey = `${t.date}|${normDesc}|${absValue}|${txId}`;
+    if (!groups.has(groupKey)) groups.set(groupKey, []);
+    groups.get(groupKey).push({ t, index });
   });
 
   const toRemove = new Set();
-  for (const group of groups.values()) {
-    const pairCount = Math.min(group.positives.length, group.negatives.length);
-    for (let i = 0; i < pairCount; i++) {
-      toRemove.add(group.positives[i]);
+  for (const items of groups.values()) {
+    if (items.length < 2) continue;
+    const csvItems = items.filter(x => x.t.source?.includes('_csv'));
+    const ofxItems = items.filter(x => x.t.source?.includes('_ofx'));
+    if (csvItems.length === 0 || ofxItems.length === 0) continue;
+    for (const o of ofxItems) {
+      toRemove.add(o.index);
     }
   }
 
-  if (toRemove.size === 0) return { cleaned: transactions, removed: 0 };
-  return {
-    cleaned: transactions.filter((_, idx) => !toRemove.has(idx)),
-    removed: toRemove.size
-  };
+  return withStrongDedup.filter((_, idx) => !toRemove.has(idx));
 };
 
 /**
@@ -353,16 +344,9 @@ const inferPersonFromDescription = (transactions) => {
   // Deduplicate (important when importing from both CSV and OFX)
   const beforeDedup = merged.length;
   merged = deduplicateTransactions(merged);
-    if (beforeDedup !== merged.length) {
-      console.log(`🔄 Deduplicated: ${beforeDedup} → ${merged.length}`);
-    }
-
-    // Remove mirrored + and - duplicates (same transaction represented twice)
-    const mirrored = removeMirroredSignPairs(merged);
-    merged = mirrored.cleaned;
-    if (mirrored.removed > 0) {
-      console.log(`🧹 Removed mirrored sign pairs: -${mirrored.removed}`);
-    }
+  if (beforeDedup !== merged.length) {
+    console.log(`🔄 Deduplicated: ${beforeDedup} → ${merged.length}`);
+  }
 
     // Sort newest first
     merged.sort((a, b) => new Date(b.date) - new Date(a.date));
@@ -370,8 +354,8 @@ const inferPersonFromDescription = (transactions) => {
     // Apply overrides
     merged = applyOverrides(merged, overrides);
 
-    // Remove fitId before saving (internal use only)
-    merged = merged.map(({ fitId, ...rest }) => rest);
+    // Remove internal IDs before saving
+    merged = merged.map(({ fitId, transactionId, ...rest }) => rest);
 
     await fs.writeFile(OUTPUT_FILE, JSON.stringify(merged, null, 2));
 

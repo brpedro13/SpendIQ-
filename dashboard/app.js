@@ -429,8 +429,9 @@ function renderDashboard() {
 
 function renderStats() {
     const totalTransactions = filteredTransactions.length;
-    const totalSpent = filteredTransactions.reduce((sum, t) => sum + Math.abs(t.value), 0);
-    const averageTransaction = totalTransactions > 0 ? totalSpent / totalTransactions : 0;
+    const outflows = filteredTransactions.filter(t => Number(t.value) < 0);
+    const totalSpent = outflows.reduce((sum, t) => sum + Math.abs(Number(t.value) || 0), 0);
+    const averageTransaction = outflows.length > 0 ? totalSpent / outflows.length : 0;
     const dates = filteredTransactions.map(t => new Date(t.date)).sort();
     const dateRange = dates.length > 0
         ? `${formatDate(dates[0])} - ${formatDate(dates[dates.length - 1])}`
@@ -500,7 +501,10 @@ function renderCategoryChart() {
     if (categoryChart) categoryChart.destroy();
 
     const totals = {};
-    for (const t of filteredTransactions) totals[t.category] = (totals[t.category] || 0) + Math.abs(t.value);
+    for (const t of filteredTransactions) {
+        if (Number(t.value) >= 0) continue;
+        totals[t.category] = (totals[t.category] || 0) + Math.abs(Number(t.value) || 0);
+    }
 
     categoryChart = new Chart(ctx, {
         type: 'pie',
@@ -579,9 +583,10 @@ function renderMonthlyChart() {
 
     const monthlyData = {};
     for (const t of filteredTransactions) {
+        if (Number(t.value) >= 0) continue;
         const d = new Date(t.date);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        monthlyData[key] = (monthlyData[key] || 0) + Math.abs(t.value);
+        monthlyData[key] = (monthlyData[key] || 0) + Math.abs(Number(t.value) || 0);
     }
 
     const sorted = Object.keys(monthlyData).sort();
@@ -653,7 +658,7 @@ function applyFilters() {
     });
 
     if (currentSort.column) {
-        sortTable(currentSort.column);
+        sortTable(currentSort.column, true);
     } else {
         renderStats();
         renderCharts();
@@ -674,12 +679,12 @@ function clearFilters() {
     renderTransactionsTable();
 }
 
-function sortTable(column) {
-    if (currentSort.column === column) {
+function sortTable(column, preserveDirection = false) {
+    if (currentSort.column === column && !preserveDirection) {
         currentSort.direction = currentSort.direction === 'asc' ? 'desc' : 'asc';
     } else {
         currentSort.column = column;
-        currentSort.direction = 'asc';
+        if (!preserveDirection) currentSort.direction = 'asc';
     }
 
     filteredTransactions.sort((a, b) => {

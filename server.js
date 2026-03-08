@@ -415,20 +415,27 @@ app.post('/api/ai/insights', async (req, res) => {
 });
 
 function summarizeTransactionsForInsight(transactions) {
-    // Aggregate by category, person, and service/establishment
+    // Aggregate outflows/inflows for a cashflow-aware summary
     const byCategory = {};
-    const byPerson = {};
+    const byPersonOutflow = {};
     const byCategoryService = {};
-    let total = 0;
+    let totalOutflow = 0;
+    let totalInflow = 0;
     for (const t of transactions) {
         const cat = t.category || 'uncategorized';
         const who = t.for || 'unknown';
         const service = (t.service || t.establishment || t.description || '').toLowerCase().trim();
-        byCategory[cat] = (byCategory[cat] || 0) + Math.abs(Number(t.value) || 0);
-        byPerson[who] = (byPerson[who] || 0) + Math.abs(Number(t.value) || 0);
-        if (!byCategoryService[cat]) byCategoryService[cat] = {};
-        byCategoryService[cat][service] = (byCategoryService[cat][service] || 0) + Math.abs(Number(t.value) || 0);
-        total += Math.abs(Number(t.value) || 0);
+        const value = Number(t.value) || 0;
+        if (value < 0) {
+            const abs = Math.abs(value);
+            byCategory[cat] = (byCategory[cat] || 0) + abs;
+            byPersonOutflow[who] = (byPersonOutflow[who] || 0) + abs;
+            if (!byCategoryService[cat]) byCategoryService[cat] = {};
+            byCategoryService[cat][service] = (byCategoryService[cat][service] || 0) + abs;
+            totalOutflow += abs;
+        } else if (value > 0) {
+            totalInflow += value;
+        }
     }
 
     // Top 3 categories
@@ -446,18 +453,21 @@ function summarizeTransactionsForInsight(transactions) {
     }
 
     // Top 3 people
-    const topPerson = Object.entries(byPerson).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k}: R$ ${v.toFixed(2)}`).join('; ');
+    const topPerson = Object.entries(byPersonOutflow).sort((a,b)=>b[1]-a[1]).slice(0,3).map(([k,v])=>`${k}: R$ ${v.toFixed(2)}`).join('; ');
 
     // Recent months
     const byMonth = {};
     for (const t of transactions) {
+        const value = Number(t.value) || 0;
+        if (value >= 0) continue;
         const d = new Date(t.date);
         const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}`;
-        byMonth[key] = (byMonth[key] || 0) + Math.abs(Number(t.value) || 0);
+        byMonth[key] = (byMonth[key] || 0) + Math.abs(value);
     }
     const lastMonths = Object.entries(byMonth).sort((a,b)=>b[0].localeCompare(a[0])).slice(0,3).map(([k,v])=>`${k}: R$ ${v.toFixed(2)}`).join('; ');
 
-    return `Total: R$ ${total.toFixed(2)} | Top categorias: ${topCat}\nPrincipais serviços/estabelecimentos por categoria:${topServicesDetails}\nTop pessoas: ${topPerson} | Últimos meses: ${lastMonths}`;
+    const net = totalInflow - totalOutflow;
+    return `Saídas: R$ ${totalOutflow.toFixed(2)} | Entradas: R$ ${totalInflow.toFixed(2)} | Líquido: R$ ${net.toFixed(2)} | Top categorias (saída): ${topCat}\nPrincipais serviços/estabelecimentos por categoria:${topServicesDetails}\nTop pessoas (saída): ${topPerson} | Últimos meses (saída): ${lastMonths}`;
 }
 
 // Start
@@ -479,12 +489,14 @@ app.listen(PORT, () => {
 // ============================================================
 
 async function checkGmailSync() {
-    try {
-        await fs.access(path.join(__dirname, 'gmail-token.json'));
+    const clientId = cleanEnv(process.env.GOOGLE_CLIENT_ID);
+    const clientSecret = cleanEnv(process.env.GOOGLE_CLIENT_SECRET);
+    const refreshToken = cleanEnv(process.env.GOOGLE_REFRESH_TOKEN);
+    if (clientId && clientSecret && refreshToken) {
         console.log('📬 Gmail sync: ✅ configurado');
-    } catch {
+    } else {
         console.log('📬 Gmail sync: ❌ não configurado (rode: node scripts/gmail-auth.js)');
-}
+    }
 }
 
 async function runParse() {
@@ -507,10 +519,10 @@ async function isMergedEmpty() {
 }
 
 async function autoSync() {
-    try {
-        // Check if gmail is configured
-        await fs.access(path.join(__dirname, 'gmail-token.json'));
-    } catch {
+    const clientId = cleanEnv(process.env.GOOGLE_CLIENT_ID);
+    const clientSecret = cleanEnv(process.env.GOOGLE_CLIENT_SECRET);
+    const refreshToken = cleanEnv(process.env.GOOGLE_REFRESH_TOKEN);
+    if (!(clientId && clientSecret && refreshToken)) {
         return; // Gmail not configured, skip
     }
 

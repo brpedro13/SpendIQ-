@@ -40,7 +40,8 @@ export function parseOfx(content, rules, applyRules) {
             value: amount,
             category,
             for: forWhom,
-            source: 'nubank_debit',
+            source: 'nubank_debit_ofx',
+            transactionId: fitId,
             fitId // unique ID to avoid duplicates
         });
     }
