@@ -10,6 +10,7 @@ let monthlyChart = null;
 
 // AI state
 let aiResults = null;
+let insightsDebounceTimer = null;
 
 // Initialize the application
 document.addEventListener('DOMContentLoaded', async () => {
@@ -101,11 +102,12 @@ async function runInsightsAnalysis() {
     loading.style.display = 'block';
     content.innerHTML = '';
     try {
+        const transactionsForInsight = filteredTransactions?.length ? filteredTransactions : transactions;
         // Send summary to backend for AI analysis
         const response = await fetch('/api/ai/insights', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ transactions })
+            body: JSON.stringify({ transactions: transactionsForInsight })
         });
         if (!response.ok) throw new Error('Erro ao obter insights da IA');
         const result = await response.json();
@@ -115,6 +117,13 @@ async function runInsightsAnalysis() {
     } finally {
         loading.style.display = 'none';
     }
+}
+
+function scheduleInsightsRefresh() {
+    if (insightsDebounceTimer) clearTimeout(insightsDebounceTimer);
+    insightsDebounceTimer = setTimeout(() => {
+        runInsightsAnalysis();
+    }, 500);
 }
 
 // Format insight text into readable paragraphs and bullet points
@@ -693,6 +702,8 @@ function applyFilters() {
         renderCharts();
         renderTransactionsTable();
     }
+
+    scheduleInsightsRefresh();
 }
 
 function clearFilters() {
@@ -706,6 +717,7 @@ function clearFilters() {
     renderStats();
     renderCharts();
     renderTransactionsTable();
+    scheduleInsightsRefresh();
 }
 
 function sortTable(column, preserveDirection = false) {
