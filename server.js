@@ -157,6 +157,37 @@ app.post('/api/save-override', async (req, res) => {
     }
 });
 
+// Export all data files as ZIP
+app.post('/api/export/files', async (req, res) => {
+    try {
+        const archiver = (await import('archiver')).default;
+        const dataDir = path.join(__dirname, 'data');
+        const files = await fs.readdir(dataDir);
+        const dataFiles = files.filter(f => f.match(/\.(csv|ofx|json)$/i) && !f.startsWith('.'));
+
+        if (dataFiles.length === 0) {
+            return res.status(400).json({ error: 'No files to export' });
+        }
+
+        res.setHeader('Content-Type', 'application/zip');
+        res.setHeader('Content-Disposition', `attachment; filename="finance-export-${new Date().toISOString().slice(0,10)}.zip"`);
+
+        const archive = archiver('zip', { zlib: { level: 9 } });
+        archive.on('error', (err) => { res.status(500).json({ error: err.message }); });
+        archive.pipe(res);
+
+        for (const file of dataFiles) {
+            const filePath = path.join(dataDir, file);
+            archive.file(filePath, { name: file });
+        }
+
+        await archive.finalize();
+    } catch (error) {
+        console.error('Error exporting files:', error);
+        res.status(500).json({ error: 'Failed to export files' });
+    }
+});
+
 // ============================================================
 // AI ENDPOINTS
 // ============================================================

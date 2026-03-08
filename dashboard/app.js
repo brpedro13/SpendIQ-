@@ -73,6 +73,7 @@ function setupEventListeners() {
     document.getElementById('monthFilter').addEventListener('change', applyFilters);
     document.getElementById('clearFilters').addEventListener('click', clearFilters);
     document.getElementById('exportOverrides').addEventListener('click', exportOverrides);
+    document.getElementById('exportFiles').addEventListener('click', exportFiles);
 
     // AI buttons
     document.getElementById('aiCategorize').addEventListener('click', runAiCategorization);
@@ -865,6 +866,27 @@ function exportOverrides() {
     } catch (error) {
         console.error('Error exporting:', error);
         alert('Failed to export overrides.');
+    }
+}
+
+async function exportFiles() {
+    try {
+        const response = await fetch('/api/export/files', { method: 'POST' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `finance-export-${new Date().toISOString().slice(0,10)}.zip`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast('📥 Files exported successfully!', 'success');
+    } catch (error) {
+        console.error('Error exporting files:', error);
+        showToast('❌ Failed to export files', 'error');
     }
 }
 

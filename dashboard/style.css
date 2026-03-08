@@ -292,6 +292,12 @@ header p { font-size: 1.1rem; opacity: 0.9; }
 .transactions-section { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
 .transactions-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
 .transactions-header h3 { margin: 0; color: #333; font-size: 1.2rem; }
+.export-buttons { display: flex; gap: 10px; }
+.export-btn {
+    padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px;
+    cursor: pointer; font-size: 14px; transition: background-color 0.2s ease;
+}
+.export-btn:hover { background: #0056b3; }
 .transactions-header button {
     padding: 8px 16px; background: #007bff; color: white; border: none; border-radius: 6px;
     cursor: pointer; font-size: 14px; transition: background-color 0.2s ease;
