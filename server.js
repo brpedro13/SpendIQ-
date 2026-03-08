@@ -533,8 +533,9 @@ async function autoSync() {
 // Manual sync endpoint
 app.post('/api/sync', async (req, res) => {
     try {
+        const forceRecovery = await isMergedEmpty();
         const { syncFromGmail } = await import('./scripts/gmail-sync.js');
-        const result = await syncFromGmail();
+        const result = await syncFromGmail({ forceRecovery });
 
         const reparsedBecauseEmpty = result.newFiles === 0 && await isMergedEmpty();
         if (result.newFiles > 0 || reparsedBecauseEmpty) {

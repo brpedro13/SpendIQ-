@@ -12,11 +12,32 @@ const OUTPUT_FILE = "./data/merged.json";
 const readCsv = async (path) => {
   try {
     const content = await fs.readFile(path, "utf8");
-    return Papa.parse(content, { header: true, delimiter: ",", skipEmptyLines: true }).data;
+    const sample = content.slice(0, 4096);
+    const semiCount = (sample.match(/;/g) || []).length;
+    const commaCount = (sample.match(/,/g) || []).length;
+    const delimiter = semiCount > commaCount ? ";" : ",";
+    const parsed = Papa.parse(content, { header: true, delimiter, skipEmptyLines: true }).data;
+    return parsed.map((row) => {
+      const cleaned = {};
+      for (const [k, v] of Object.entries(row)) {
+        const key = (k || "").replace(/^\uFEFF/, "").trim();
+        cleaned[key] = v;
+      }
+      return cleaned;
+    });
   } catch (error) {
     console.error(`Error reading ${path}:`, error.message);
     return [];
   }
+};
+
+const getField = (row, keys) => {
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== "") {
+      return row[key];
+    }
+  }
+  return "";
 };
 
 const applyRules = (description, rules) => {
@@ -78,11 +99,14 @@ const normalizeAmount = (amountStr) => {
 
 const processNubankCsv = (rows, rules) => {
   return rows.map((row) => {
-    const { category, for: forWhom } = applyRules(row.title, rules);
-    const rawValue = normalizeAmount(row.amount);
+    const title = getField(row, ["title", "Título", "descricao", "Descrição", "description"]);
+    const amount = getField(row, ["amount", "valor", "Valor"]);
+    const date = getField(row, ["date", "data", "Data"]);
+    const { category, for: forWhom } = applyRules(title, rules);
+    const rawValue = normalizeAmount(amount);
     return {
-      date: normalizeDate(row.date),
-      description: row.title?.trim() || "",
+      date: normalizeDate(date),
+      description: title?.trim() || "",
       value: rawValue * -1,
       category, for: forWhom, source: "nubank"
     };
@@ -91,11 +115,14 @@ const processNubankCsv = (rows, rules) => {
 
 const processNubankDebitCsv = (rows, rules) => {
   return rows.map((row) => {
-    const { category, for: forWhom } = applyRules(row.Descrição, rules);
+    const description = getField(row, ["Descrição", "Descricao", "descricao", "title", "description"]);
+    const date = getField(row, ["Data", "data", "date"]);
+    const value = getField(row, ["Valor", "valor", "amount"]);
+    const { category, for: forWhom } = applyRules(description, rules);
     return {
-      date: normalizeDate(row.Data),
-      description: row.Descrição?.trim() || "",
-      value: normalizeAmount(row.Valor),
+      date: normalizeDate(date),
+      description: description?.trim() || "",
+      value: normalizeAmount(value),
       category, for: forWhom, source: "nubank_debit"
     };
   });
@@ -228,9 +255,18 @@ const inferPersonFromDescription = (transactions) => {
 
       let processedRows = [];
       const firstRow = rows[0];
-      if (firstRow.date && firstRow.title && firstRow.amount) {
+      const hasClassicCard =
+        (firstRow.date || firstRow.data || firstRow.Data) &&
+        (firstRow.title || firstRow.Título || firstRow.descricao || firstRow.Descrição || firstRow.description) &&
+        (firstRow.amount || firstRow.valor || firstRow.Valor);
+      const hasDebit =
+        (firstRow.Data || firstRow.data || firstRow.date) &&
+        (firstRow.Valor || firstRow.valor || firstRow.amount) &&
+        (firstRow.Descrição || firstRow.Descricao || firstRow.descricao || firstRow.title || firstRow.description);
+
+      if (hasClassicCard) {
         processedRows = processNubankCsv(rows, rules);
-      } else if (firstRow.Data && firstRow.Valor && firstRow.Descrição) {
+      } else if (hasDebit) {
         processedRows = processNubankDebitCsv(rows, rules);
       } else {
         console.log(`⚠️  Unknown CSV format: ${file}, skipping...`);

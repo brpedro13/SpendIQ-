@@ -22,14 +22,21 @@ const NUBANK_SENDERS = [
 
 const VALID_EXTENSIONS = ['.csv', '.ofx', '.OFX', '.CSV'];
 
+function cleanEnv(val) {
+    if (typeof val === 'string') {
+        return val.replace(/^"(.*)"$/, '$1').replace(/^'(.*)'$/, '$1');
+    }
+    return val;
+}
+
 /**
  * Get authenticated Gmail client
  */
 async function getGmailClient() {
     // Use variáveis de ambiente em vez de arquivos locais
-    const client_id = process.env.GOOGLE_CLIENT_ID;
-    const client_secret = process.env.GOOGLE_CLIENT_SECRET;
-    const refresh_token = process.env.GOOGLE_REFRESH_TOKEN;
+    const client_id = cleanEnv(process.env.GOOGLE_CLIENT_ID);
+    const client_secret = cleanEnv(process.env.GOOGLE_CLIENT_SECRET);
+    const refresh_token = cleanEnv(process.env.GOOGLE_REFRESH_TOKEN);
     if (!client_id || !client_secret || !refresh_token) {
         throw new Error('Faltam variáveis de ambiente do Google: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REFRESH_TOKEN');
     }
@@ -52,6 +59,18 @@ async function loadSyncState() {
 async function saveSyncState(state) {
     state.lastSync = new Date().toISOString();
     await fs.writeFile(SYNC_STATE_PATH, JSON.stringify(state, null, 2));
+}
+
+async function hasLocalBankFiles() {
+    try {
+        const files = await fs.readdir(DATA_DIR);
+        return files.some((f) => {
+            const ext = path.extname(f).toLowerCase();
+            return ext === '.csv' || ext === '.ofx';
+        });
+    } catch {
+        return false;
+    }
 }
 
 /**
@@ -155,15 +174,25 @@ async function downloadAttachments(gmail, messageId) {
 /**
  * Main sync function
  */
-export async function syncFromGmail() {
+export async function syncFromGmail(options = {}) {
     console.log('📬 Iniciando sync do Gmail...');
 
     const gmail = await getGmailClient();
     const state = await loadSyncState();
+    const forceRecovery = !!options.forceRecovery;
+    const localFilesExist = await hasLocalBankFiles();
+    const recoveryMode = forceRecovery || !localFilesExist;
+    if (recoveryMode) {
+        console.log('🩹 Recovery mode: rebaixando anexos para reconstruir base local');
+    }
 
     // Search for emails from last 90 days if first sync, otherwise since last sync
     let afterDate;
-    if (state.lastSync) {
+    if (recoveryMode) {
+        const d = new Date();
+        d.setDate(d.getDate() - 180);
+        afterDate = d.toISOString().split('T')[0].replace(/-/g, '/');
+    } else if (state.lastSync) {
         const d = new Date(state.lastSync);
         d.setDate(d.getDate() - 1); // 1 day overlap for safety
         afterDate = d.toISOString().split('T')[0].replace(/-/g, '/');
@@ -177,7 +206,7 @@ export async function syncFromGmail() {
     let newFiles = 0;
 
     for (const msg of messages) {
-        if (state.processedMessageIds.includes(msg.id)) {
+        if (!recoveryMode && state.processedMessageIds.includes(msg.id)) {
             continue;
         }
 
