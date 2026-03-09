@@ -27,6 +27,8 @@ const BASELINE_RULES = {
   "lojas americanas": { category: "compras online", for: "pedro" },
   "smartfit": { category: "academia", for: "pedro" },
   "google claude by anth": { category: "assinatura", for: "pedro" },
+  "nycc": { category: "lazer", for: "pedro" },
+  "princesa leblon": { category: "restaurante", for: "pedro" },
   "burger king": { category: "alimentação", for: "pedro" },
   "carioca bebidas": { category: "alimentação", for: "pedro" },
   "dani 2001 massas": { category: "alimentação", for: "pedro" },
@@ -118,9 +120,6 @@ const applyRules = (description, rules) => {
 const inferFallbackClassification = (description) => {
   const lowerDesc = (description || "").toLowerCase();
   const normalized = normalizeRuleKeyword(description || "");
-  const isLikelyPersonOnly = /^[a-z\s]+$/.test(normalized)
-    && normalized.trim().split(/\s+/).length >= 2
-    && normalized.trim().split(/\s+/).length <= 5;
 
   let forWhom = "pedro";
   if (lowerDesc.includes("ana luiza gonçalves sousa")) {
@@ -134,15 +133,18 @@ const inferFallbackClassification = (description) => {
     lowerDesc.includes("transferência") ||
     lowerDesc.includes("transferencia") ||
     lowerDesc.includes("pix") ||
-    lowerDesc.includes("reembolso recebido") ||
-    isLikelyPersonOnly
+    lowerDesc.includes("reembolso recebido")
   ) {
     category = "transferencia";
   } else if (/mercadolivre|mercado\*mercadolivre|amazon|americanas|olx|alipay|magazi/.test(normalized)) {
     category = "compras online";
+  } else if (/nycc|cinema|ingresso/.test(normalized)) {
+    category = "lazer";
   } else if (/smartfit|fitnessnation|academia|gym/.test(normalized)) {
     category = "academia";
-  } else if (/burger king|ifood|food|churra|massas|cafe|bebidas|bondinho pao|princesa leblon|jacksonpqueij/.test(normalized)) {
+  } else if (/princesa leblon|restaurante/.test(normalized)) {
+    category = "restaurante";
+  } else if (/burger king|ifood|food|churra|massas|cafe|bebidas|bondinho pao|jacksonpqueij/.test(normalized)) {
     category = "alimentação";
   } else if (/google claude|spotify|netflix|deezer|prime video/.test(normalized)) {
     category = "assinatura";
@@ -719,8 +721,10 @@ const inferPersonFromDescription = (transactions) => {
       { regex: /armaze[mn] urbano/i, category: 'mercado' },
       { regex: /drive digital tecnologia/i, category: 'compras online' },
       { regex: /mercadolivre|mercado\*mercadolivre|amazonmktplc|americanas|alipay|olx|magazi/i, category: 'compras online' },
+      { regex: /nycc|cinema|ingresso/i, category: 'lazer' },
       { regex: /smartfit|fitnessnation|academia|gym/i, category: 'academia' },
-      { regex: /burger king|bondinho pao|companhiadochurra|carioca bebidas|dani 2001 massas|cafe 18 do forte|jacksonpqueij|princesa leblon/i, category: 'alimentação' },
+      { regex: /princesa leblon|restaurante/i, category: 'restaurante' },
+      { regex: /burger king|bondinho pao|companhiadochurra|carioca bebidas|dani 2001 massas|cafe 18 do forte|jacksonpqueij/i, category: 'alimentação' },
       { regex: /google claude|spotify|netflix|deezer|prime video/i, category: 'assinatura' },
       { regex: /porto seguro/i, category: 'seguro' },
       { regex: /recarga de celular/i, category: 'transporte' },

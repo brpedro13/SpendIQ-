@@ -306,16 +306,14 @@ REGRAS:
 - Keywords curtas e minúsculas (ex: "spotify", "burger king", não a descrição inteira)
 - Seja conciso no reasoning (máximo 8 palavras)
 - Prefira categorias existentes. Crie novas só se necessário
+- Interprete nomes de estabelecimentos quando houver padrão claro (ex: "nycc" -> "lazer", "princesa leblon" -> "restaurante")
+- Só use "transferencia" com sinais claros de transferência (pix/transferência/reembolso), não apenas por parecer nome de pessoa
 - Transações que NÃO são gastos reais → coloque em suggested_ignores, NÃO em categorizations`;
 }
 
 function inferFallbackCategorization(transaction) {
     const description = (transaction?.description || '').toLowerCase();
     const normalized = normalizeText(description);
-
-    const isLikelyPersonOnly = /^[a-z\s]+$/.test(normalized)
-        && normalized.trim().split(/\s+/).length >= 2
-        && normalized.trim().split(/\s+/).length <= 5;
 
     let forWhom = 'pedro';
     if (description.includes('ana luiza gonçalves sousa')) {
@@ -329,15 +327,18 @@ function inferFallbackCategorization(transaction) {
         description.includes('transferência') ||
         description.includes('transferencia') ||
         description.includes('pix') ||
-        description.includes('reembolso recebido') ||
-        isLikelyPersonOnly
+        description.includes('reembolso recebido')
     ) {
         category = 'transferencia';
     } else if (/mercadolivre|mercado\*mercadolivre|amazon|americanas|olx|alipay|magazi/.test(normalized)) {
         category = 'compras online';
+    } else if (/nycc|cinema|ingresso/.test(normalized)) {
+        category = 'lazer';
     } else if (/smartfit|fitnessnation|academia|gym/.test(normalized)) {
         category = 'academia';
-    } else if (/burger king|ifood|food|churra|massas|cafe|bebidas|bondinho pao|princesa leblon|jacksonpqueij/.test(normalized)) {
+    } else if (/princesa leblon|restaurante/.test(normalized)) {
+        category = 'restaurante';
+    } else if (/burger king|ifood|food|churra|massas|cafe|bebidas|bondinho pao|jacksonpqueij/.test(normalized)) {
         category = 'alimentação';
     } else if (/google claude|spotify|netflix|deezer|prime video/.test(normalized)) {
         category = 'assinatura';
@@ -373,6 +374,8 @@ const SAFE_BASELINE_RULES = {
     'ifood': { category: 'alimentação', for: 'ambos' },
     'spotify': { category: 'assinatura', for: 'ambos' },
     'ebw*spotify': { category: 'assinatura', for: 'ambos' },
+    'nycc': { category: 'lazer', for: 'pedro' },
+    'princesa leblon': { category: 'restaurante', for: 'pedro' },
     'drogasmil': { category: 'farmácia', for: 'ambos' },
     'drogaria venancio': { category: 'farmácia', for: 'ambos' }
 };
