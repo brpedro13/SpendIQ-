@@ -542,48 +542,94 @@ function renderFinancialAlerts() {
     const outflows = filteredTransactions.filter(t => Number(t.value) < 0);
     const alerts = [];
 
-    // Alert 1: transporte month-over-month spike
-    const transportByMonth = {};
-    for (const t of outflows.filter(t => (t.category || '').toLowerCase().includes('transporte'))) {
+    // Build monthly totals per category/merchant for actionable trend alerts.
+    const monthlyTotals = {};
+    for (const t of outflows) {
         const d = new Date(t.date);
         const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-        transportByMonth[key] = (transportByMonth[key] || 0) + Math.abs(Number(t.value));
+        if (!monthlyTotals[key]) {
+            monthlyTotals[key] = {
+                delivery: 0,
+                assinaturaByMerchant: {}
+            };
+        }
+
+        const abs = Math.abs(Number(t.value));
+        const desc = (t.description || '').toLowerCase();
+        const cat = (t.category || '').toLowerCase();
+
+        const isDelivery = cat.includes('delivery')
+            || desc.includes('ifood')
+            || desc.includes('99food')
+            || desc.includes('rappi')
+            || desc.includes('delivery');
+        if (isDelivery) {
+            monthlyTotals[key].delivery += abs;
+        }
+
+        if (cat.includes('assinatura')) {
+            const merchant = normalizeMerchantName(t.description);
+            monthlyTotals[key].assinaturaByMerchant[merchant] = (monthlyTotals[key].assinaturaByMerchant[merchant] || 0) + 1;
+        }
     }
-    const months = Object.keys(transportByMonth).sort();
+
+    // Alert 1: delivery up >= 30% month-over-month.
+    const months = Object.keys(monthlyTotals).sort();
     if (months.length >= 2) {
         const last = months[months.length - 1];
         const prev = months[months.length - 2];
-        const lastValue = transportByMonth[last] || 0;
-        const prevValue = transportByMonth[prev] || 0;
+        const lastValue = monthlyTotals[last].delivery || 0;
+        const prevValue = monthlyTotals[prev].delivery || 0;
         if (prevValue > 0) {
             const changePct = ((lastValue - prevValue) / prevValue) * 100;
             if (changePct >= 30) {
                 alerts.push({
                     type: 'warning',
-                    title: 'Transporte subiu forte',
+                    title: 'Delivery subiu forte no mes',
                     body: `${last}: +${changePct.toFixed(1)}% vs ${prev} (R$ ${lastValue.toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
                 });
             }
         }
     }
 
-    // Alert 2: outliers above dynamic threshold
-    const values = outflows.map(t => Math.abs(Number(t.value))).filter(v => Number.isFinite(v));
-    if (values.length >= 8) {
-        const avg = values.reduce((s, v) => s + v, 0) / values.length;
-        const variance = values.reduce((s, v) => s + ((v - avg) ** 2), 0) / values.length;
-        const std = Math.sqrt(variance);
-        const threshold = Math.max(100, avg + 2 * std);
-        const outlier = outflows
-            .filter(t => Math.abs(Number(t.value)) >= threshold)
-            .sort((a, b) => Math.abs(Number(b.value)) - Math.abs(Number(a.value)))[0];
-        if (outlier) {
+    // Alert 2: duplicate subscription charges in the most recent month.
+    if (months.length > 0) {
+        const last = months[months.length - 1];
+        const duplicates = Object.entries(monthlyTotals[last].assinaturaByMerchant)
+            .filter(([, count]) => count >= 2)
+            .sort((a, b) => b[1] - a[1]);
+        if (duplicates.length > 0) {
+            const [merchant, count] = duplicates[0];
             alerts.push({
-                type: 'info',
-                title: 'Gasto atipico detectado',
-                body: `${formatDate(new Date(outlier.date))} - ${outlier.description} (R$ ${Math.abs(Number(outlier.value)).toLocaleString('pt-BR', { minimumFractionDigits: 2 })})`
+                type: 'warning',
+                title: 'Assinatura duplicada detectada',
+                body: `${merchant} apareceu ${count} vezes em ${last}. Verifique cobranca em duplicidade.`
             });
         }
+    }
+
+    // Alert 3: installments near the end (remaining <= 2).
+    const nearEndInstallments = outflows
+        .map((t) => {
+            const m = String(t.description || '').match(/parcela\s*(\d+)\s*\/\s*(\d+)/i);
+            if (!m) return null;
+            const current = Number(m[1]);
+            const total = Number(m[2]);
+            if (!Number.isFinite(current) || !Number.isFinite(total) || total <= 0) return null;
+            const remaining = total - current;
+            if (remaining < 0 || remaining > 2) return null;
+            return { t, remaining };
+        })
+        .filter(Boolean)
+        .sort((a, b) => a.remaining - b.remaining || Number(a.t.value) - Number(b.t.value));
+
+    if (nearEndInstallments.length > 0) {
+        const item = nearEndInstallments[0];
+        alerts.push({
+            type: 'info',
+            title: 'Parcela proxima do fim',
+            body: `${item.t.description} (${item.remaining} restante${item.remaining === 1 ? '' : 's'})`
+        });
     }
 
     if (alerts.length === 0) {
@@ -597,6 +643,18 @@ function renderFinancialAlerts() {
             <div class="alert-body">${a.body}</div>
         </div>
     `).join('');
+}
+
+function normalizeMerchantName(description) {
+    const raw = (description || '').toLowerCase();
+    const cleaned = raw
+        .replace(/\s*-\s*parcela\s*\d+\s*\/\s*\d+/i, '')
+        .replace(/compra no debito via\s*/i, '')
+        .replace(/compra no debito\s*-\s*/i, '')
+        .replace(/\*/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    return cleaned || 'assinatura';
 }
 
 function renderStats() {
