@@ -632,6 +632,39 @@ function renderFinancialAlerts() {
         });
     }
 
+    // Alert 4: keep alerts useful even when only one month is selected.
+    if (alerts.length === 0 && months.length === 1) {
+        const monthKey = months[0];
+        const dayTotals = {};
+        for (const t of outflows) {
+            const d = new Date(t.date);
+            const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+            if (key !== monthKey) continue;
+            const day = String(d.getDate()).padStart(2, '0');
+            dayTotals[day] = (dayTotals[day] || 0) + Math.abs(Number(t.value));
+        }
+
+        const dayValues = Object.values(dayTotals);
+        if (dayValues.length >= 4) {
+            const avg = dayValues.reduce((s, v) => s + v, 0) / dayValues.length;
+            const variance = dayValues.reduce((s, v) => s + ((v - avg) ** 2), 0) / dayValues.length;
+            const std = Math.sqrt(variance);
+            const threshold = avg + 1.5 * std;
+
+            const outlierDay = Object.entries(dayTotals)
+                .filter(([, v]) => v >= threshold)
+                .sort((a, b) => b[1] - a[1])[0];
+
+            if (outlierDay) {
+                alerts.push({
+                    type: 'warning',
+                    title: 'Dia de gasto elevado no mes',
+                    body: `${outlierDay[0]}/${monthKey.slice(5, 7)}: R$ ${outlierDay[1].toLocaleString('pt-BR', { minimumFractionDigits: 2 })}`
+                });
+            }
+        }
+    }
+
     if (alerts.length === 0) {
         container.innerHTML = `<div class="alert-empty">Sem alertas relevantes no filtro atual.</div>`;
         return;
@@ -753,9 +786,21 @@ function renderCategoryChart() {
     if (categoryChart) categoryChart.destroy();
 
     const totals = {};
+    const monthFilterValue = document.getElementById('monthFilter')?.value || '';
+    const monthKeys = new Set();
+
     for (const t of filteredTransactions) {
         if (Number(t.value) >= 0) continue;
         totals[t.category] = (totals[t.category] || 0) + Math.abs(Number(t.value) || 0);
+        const d = new Date(t.date);
+        monthKeys.add(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
+    }
+
+    // If viewing all months, show monthly average per category instead of accumulated total.
+    if (!monthFilterValue && monthKeys.size > 1) {
+        for (const k of Object.keys(totals)) {
+            totals[k] = totals[k] / monthKeys.size;
+        }
     }
 
     categoryChart = new Chart(ctx, {
@@ -832,6 +877,44 @@ function renderPersonChart() {
 function renderMonthlyChart() {
     const ctx = document.getElementById('monthlyChart').getContext('2d');
     if (monthlyChart) monthlyChart.destroy();
+
+    const outflows = filteredTransactions.filter(t => Number(t.value) < 0);
+    const monthKeysInFilter = [...new Set(outflows.map((t) => {
+        const d = new Date(t.date);
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    }))].sort();
+
+    // When only one month is visible, switch to a daily trend inside that month.
+    if (monthKeysInFilter.length === 1) {
+        const dailyData = {};
+        for (const t of outflows) {
+            const d = new Date(t.date);
+            const dayKey = `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`;
+            dailyData[dayKey] = (dailyData[dayKey] || 0) + Math.abs(Number(t.value) || 0);
+        }
+
+        const daySorted = Object.keys(dailyData).sort((a, b) => {
+            const [da, ma] = a.split('/').map(Number);
+            const [db, mb] = b.split('/').map(Number);
+            if (ma !== mb) return ma - mb;
+            return da - db;
+        });
+
+        monthlyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: daySorted,
+                datasets: [{
+                    label: 'Gasto Diario (R$)',
+                    data: daySorted.map(d => dailyData[d]),
+                    borderColor: '#36A2EB', backgroundColor: 'rgba(54,162,235,0.1)',
+                    fill: true, tension: 0.35
+                }]
+            },
+            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true } } }
+        });
+        return;
+    }
 
     const monthlyData = {};
     for (const t of filteredTransactions) {
