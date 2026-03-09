@@ -657,9 +657,31 @@ function populateFilters() {
         monthFilter.appendChild(o);
     }
 
-    // Default to show all years/months (don't preselect current month)
-    yearFilter.value = '';
-    monthFilter.value = '';
+    // Default: show current month. If unavailable, fallback to latest period in data.
+    const now = new Date();
+    const currentYear = String(now.getFullYear());
+    const currentMonth = String(now.getMonth() + 1).padStart(2, '0');
+    const hasCurrentYear = years.some(y => String(y) === currentYear);
+
+    if (hasCurrentYear) {
+        yearFilter.value = currentYear;
+        monthFilter.value = currentMonth;
+    } else if (years.length > 0) {
+        const latestYear = String(years[0]);
+        yearFilter.value = latestYear;
+
+        // Pick the latest month available within the chosen fallback year.
+        const latestMonthInYear = transactions
+            .filter(t => String(new Date(t.date).getFullYear()) === latestYear)
+            .map(t => String(new Date(t.date).getMonth() + 1).padStart(2, '0'))
+            .sort()
+            .pop();
+
+        monthFilter.value = latestMonthInYear || '';
+    } else {
+        yearFilter.value = '';
+        monthFilter.value = '';
+    }
 }
 
 function renderCharts() {
